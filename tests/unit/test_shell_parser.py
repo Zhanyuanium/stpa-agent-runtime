@@ -36,6 +36,8 @@ def test_ensure_shellcheck_run_and_summary_for_audit() -> None:
     assert "diagnostic_count" in summary
     assert "level_counts" in summary
     assert "stderr" in summary
+    assert "command_text" in summary
+    assert "diagnostics" in summary
     assert summary["level_counts"]["error"] >= 0
     assert summary["level_counts"]["warning"] >= 0
     assert summary["level_counts"]["info"] >= 0

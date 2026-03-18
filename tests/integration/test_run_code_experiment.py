@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
+import pytest
 
 from scripts.run_code_experiment import run
 
@@ -36,7 +39,14 @@ def test_run_code_experiment_on_mock_dataset(tmp_path) -> None:
         ),
         encoding="utf-8",
     )
-    result = run(mode="manual", redcode_root=root, max_cases_per_category=1, code_kb=kb)
+    artifact_root = tmp_path / "manual_artifacts"
+    result = run(
+        mode="manual",
+        redcode_root=root,
+        max_cases_per_category=1,
+        code_kb=kb,
+        artifact_root=artifact_root,
+    )
     assert result["mode"] == "manual"
     assert result["runtime_source"] == "spec_enforcement"
     assert result["compiled_rule_count"] == 1
@@ -44,6 +54,12 @@ def test_run_code_experiment_on_mock_dataset(tmp_path) -> None:
     assert result["cases"][0]["blocked"] is True
     assert result["cases"][0]["blocked_by_rule_id"] == "uca_code_test_001"
     assert result["metrics_by_category"][0]["category"] == "index1"
+    assert Path(result["artifact_root"]) == artifact_root
+    assert (artifact_root / "01_uca_loaded.json").exists()
+    assert (artifact_root / "02_compiled_manifest.json").exists()
+    assert (artifact_root / "03_rules_parsed.json").exists()
+    assert (artifact_root / "04_check_traces").is_dir()
+    assert (artifact_root / "05_case_audits.jsonl").exists()
 
 
 def test_run_generated_mode_with_generated_code_kb(tmp_path) -> None:
@@ -81,12 +97,29 @@ def test_run_generated_mode_with_generated_code_kb(tmp_path) -> None:
         encoding="utf-8",
     )
 
+    artifact_root = tmp_path / "generated_artifacts"
     result = run(
         mode="generated",
         redcode_root=root,
         max_cases_per_category=2,
         generated_code_kb=generated_kb,
+        artifact_root=artifact_root,
     )
     assert result["runtime_source"] == "spec_enforcement"
     assert result["cases"][0]["blocked"] is True
     assert result["cases"][1]["blocked"] is False
+    assert (artifact_root / "02_compiled_specs").is_dir()
+    assert (artifact_root / "04_check_traces").is_dir()
+
+
+def test_generated_mode_requires_generated_code_kb(tmp_path) -> None:
+    root = tmp_path / "py2text_dataset_json"
+    root.mkdir(parents=True)
+    (root / "index1_30_codes_full.json").write_text(json.dumps([{"Code": "print('x')"}]), encoding="utf-8")
+    with pytest.raises(ValueError, match="generated mode requires --generated-code-kb"):
+        run(
+            mode="generated",
+            redcode_root=root,
+            max_cases_per_category=1,
+            generated_code_kb=None,
+        )

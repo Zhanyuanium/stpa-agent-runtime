@@ -36,8 +36,11 @@ def test_code_pipeline_e2e(tmp_path) -> None:
         redcode_root=redcode_root,
         max_cases_per_category=2,
         generated_code_kb=Path(__file__).resolve().parents[2] / "data" / "uca" / "code" / "sample_kb.json",
+        artifact_root=tmp_path / "code_e2e_artifacts",
     )
     assert result["runtime_source"] == "spec_enforcement"
     assert result["metrics"]["total_cases"] == 2
     assert "interception_rate" in result["metrics"]
     assert result["metrics_by_category"]
+    assert Path(result["artifact_root"]).exists()
+    assert (Path(result["artifact_root"]) / "05_case_audits.jsonl").exists()

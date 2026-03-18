@@ -11,13 +11,23 @@ def test_rule_audit_record_shellcheck_summary_serializable() -> None:
         enforce_result="continue",
         detail="{}",
         uca_id="UCA-SHELL-001",
-        shellcheck_summary={"available": True, "diagnostic_count": 0, "level_counts": {"error": 0, "warning": 0, "info": 0}, "stderr": ""},
+        command_text="echo hello",
+        shellcheck_summary={
+            "command_text": "echo hello",
+            "available": True,
+            "diagnostic_count": 0,
+            "level_counts": {"error": 0, "warning": 0, "info": 0},
+            "stderr": "",
+            "diagnostics": [],
+        },
+        shellcheck_diagnostics=[],
     )
     assert record.shellcheck_summary is not None
     assert record.shellcheck_summary["available"] is True
     # Pydantic model is JSON-serializable
     j = record.model_dump()
     assert "shellcheck_summary" in j
+    assert "shellcheck_diagnostics" in j
     assert j["uca_id"] == "UCA-SHELL-001"
 
 

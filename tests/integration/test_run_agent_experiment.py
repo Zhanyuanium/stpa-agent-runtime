@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-import pytest
 from pathlib import Path
 
 from scripts.run_agent_experiment import run_model_in_loop
@@ -25,11 +24,21 @@ def test_run_model_in_loop_with_mock_shell_cases(tmp_path) -> None:
         shell_kb_path=Path("data/uca/shell/shell_kb.json"),
         risky_json=risky,
         benign_json=benign,
+        artifact_root=tmp_path / "shell_artifacts",
     )
     assert result["mode"] == "model_in_loop"
-    assert result["backend"] == "heuristic"
+    assert result["backend"] == "spec_runtime"
     assert result["metrics"]["total_cases"] == 2
     assert len(result["cases"]) == 2
+    assert result["runtime_source"] == "spec_enforcement"
+    assert result["compiled_rule_count"] >= 1
+    artifact_root = Path(result["artifact_root"])
+    assert (artifact_root / "01_uca_loaded.json").exists()
+    assert (artifact_root / "02_compiled_specs").is_dir()
+    assert (artifact_root / "02_compiled_manifest.json").exists()
+    assert (artifact_root / "03_rules_parsed.json").exists()
+    assert (artifact_root / "04_check_traces").is_dir()
+    assert (artifact_root / "05_case_audits.jsonl").exists()
     for c in result["cases"]:
         assert "case_id" in c and "is_risky" in c and "blocked" in c and "fulfilled" in c and "overhead_ms" in c
 
@@ -54,65 +63,26 @@ def test_run_model_in_loop_with_risky_directory_and_code_field(tmp_path) -> None
         shell_kb_path=Path("data/uca/shell/shell_kb.json"),
         risky_json=risky_dir,
         benign_json=None,
+        artifact_root=tmp_path / "shell_artifacts_dir",
     )
     assert result["metrics"]["total_cases"] == 1
     assert result["cases"][0]["case_id"].startswith("risky:index1_30_codes_full_upd:")
 
 
-def test_run_model_in_loop_heuristic_backend_explicit(tmp_path) -> None:
+def test_run_model_in_loop_without_backend_switch(tmp_path) -> None:
     risky = tmp_path / "risky.json"
     risky.write_text(json.dumps([{"command": "ls -la"}]), encoding="utf-8")
     result = run_model_in_loop(
         shell_kb_path=Path("data/uca/shell/shell_kb.json"),
         risky_json=risky,
         benign_json=None,
-        backend="heuristic",
+        artifact_root=tmp_path / "spec_runtime_artifacts",
     )
-    assert result["backend"] == "heuristic"
+    assert result["backend"] == "spec_runtime"
     assert result["metrics"]["total_cases"] == 1
 
 
-def test_run_model_in_loop_unknown_backend_raises(tmp_path) -> None:
-    risky = tmp_path / "risky.json"
-    risky.write_text(json.dumps([{"command": "ls"}]), encoding="utf-8")
-    with pytest.raises(ValueError, match="Unknown backend"):
-        run_model_in_loop(
-            shell_kb_path=Path("data/uca/shell/shell_kb.json"),
-            risky_json=risky,
-            benign_json=None,
-            backend="invalid",
-        )
-
-
-def test_run_model_in_loop_model_backend_no_api_key_raises(tmp_path, monkeypatch) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    risky = tmp_path / "risky.json"
-    risky.write_text(json.dumps([{"command": "ls"}]), encoding="utf-8")
-    with pytest.raises(SystemExit):
-        run_model_in_loop(
-            shell_kb_path=Path("data/uca/shell/shell_kb.json"),
-            risky_json=risky,
-            benign_json=None,
-            backend="model",
-        )
-
-
-def test_run_model_in_loop_model_backend_custom_env_missing_raises(tmp_path, monkeypatch) -> None:
-    monkeypatch.delenv("VENDOR_API_KEY", raising=False)
-    risky = tmp_path / "risky.json"
-    risky.write_text(json.dumps([{"command": "ls"}]), encoding="utf-8")
-    with pytest.raises(SystemExit):
-        run_model_in_loop(
-            shell_kb_path=Path("data/uca/shell/shell_kb.json"),
-            risky_json=risky,
-            benign_json=None,
-            backend="model",
-            api_key_env="VENDOR_API_KEY",
-            api_base_url="https://vendor.example/v1",
-        )
-
-
-def test_cli_help_contains_backend_options() -> None:
+def test_cli_help_contains_strict_runtime_options() -> None:
     root = Path(__file__).resolve().parents[2]
     proc = subprocess.run(
         [sys.executable, "-m", "scripts.run_agent_experiment", "--help"],
@@ -122,9 +92,6 @@ def test_cli_help_contains_backend_options() -> None:
     )
     assert proc.returncode == 0
     out = proc.stdout + proc.stderr
-    assert "--backend" in out
-    assert "heuristic" in out
-    assert "model" in out
-    assert "--model" in out
-    assert "--api-base-url" in out
-    assert "--api-key-env" in out
+    assert "--shell-kb" in out
+    assert "--risky-json" in out
+    assert "--artifact-root" in out
