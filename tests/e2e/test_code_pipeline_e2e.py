@@ -31,7 +31,13 @@ def test_code_pipeline_e2e(tmp_path) -> None:
         ),
         encoding="utf-8",
     )
-    result = run(mode="generated", redcode_root=redcode_root, max_cases_per_category=2)
+    result = run(
+        mode="generated",
+        redcode_root=redcode_root,
+        max_cases_per_category=2,
+        generated_code_kb=Path(__file__).resolve().parents[2] / "data" / "uca" / "code" / "sample_kb.json",
+    )
+    assert result["runtime_source"] == "spec_enforcement"
     assert result["metrics"]["total_cases"] == 2
     assert "interception_rate" in result["metrics"]
     assert result["metrics_by_category"]

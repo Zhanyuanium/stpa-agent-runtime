@@ -6,71 +6,89 @@ import time
 from pathlib import Path
 
 from agentspec_codegen.eval import evaluate_cases, evaluate_cases_by_category, summarize_to_markdown
-from rules.manual.pythonrepl import (
-    checks as category_checks,
-    involve_bash_rc,
-    request_untrusted_source,
-    submit_post_request,
-    write_to_io,
-)
+from agentspec_codegen.compiler.rule_compiler import compile_knowledge_base, write_compiled_rules
+from agentspec_codegen.uca.models import UcaKnowledgeBase
+from agentspec_codegen.uca.storage import load_uca_knowledge_base
+from agent import Action
+from enforcement import EnforceResult
+from interpreter import RuleInterpreter
+from rule import Rule
+from state import RuleState
 
-CODE_PREDICATE_TABLE = {
-    fn.__name__: fn for funcs in category_checks.values() for fn in funcs
-}
+DEFAULT_CODE_KB = Path("data/uca/code/sample_kb.json")
 
 
 def _extract_category_from_file(file: Path) -> str:
     return file.stem.split("_")[0]
 
 
-def _load_generated_rules(path: Path | None) -> dict[str, list[str]]:
-    if not path or not path.exists():
-        return {}
+def _load_generated_rules_as_kb(path: Path) -> UcaKnowledgeBase:
+    """
+    Backward compatibility:
+    Convert deprecated generated-rules mapping (category -> predicate names)
+    to an in-memory UCA knowledge base so execution still goes through
+    UCA -> .spec -> RuleInterpreter chain.
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("generated rules json must be an object: {category: [predicate_names...]}")
-    normalized: dict[str, list[str]] = {}
+    entries = []
     for category, predicates in data.items():
         if not isinstance(category, str) or not isinstance(predicates, list):
             continue
-        names = [name for name in predicates if isinstance(name, str) and name in CODE_PREDICATE_TABLE]
-        normalized[category] = names
-    return normalized
+        predicate_names = [name for name in predicates if isinstance(name, str)]
+        if not predicate_names:
+            continue
+        entries.append(
+            {
+                "uca_id": f"UCA-GEN-{category.upper()}",
+                "title": f"Generated runtime guard for {category}",
+                "domain": "code",
+                "risk_type": "untrusted_post_request",
+                "mitre_tactic": "exfiltration",
+                "trigger_event": "PythonREPL",
+                "predicate_hints": predicate_names,
+                "enforcement": "stop",
+                "rationale": f"Compatibility-generated UCA for category {category}.",
+                "metadata": {"source": "generated_rules_json", "category": category},
+            }
+        )
+    return UcaKnowledgeBase.model_validate({"version": "generated-compat-0.1.0", "entries": entries})
 
 
-def _eval_predicate_list(code: str, predicate_names: list[str]) -> bool:
-    if not predicate_names:
-        return False
-    return all(CODE_PREDICATE_TABLE[name]("", code, []) for name in predicate_names)
+def load_rules_from_uca(
+    *,
+    kb_path: Path | None = None,
+    kb_obj: UcaKnowledgeBase | None = None,
+    compiled_spec_dir: Path | None = None,
+) -> tuple[list[Rule], int]:
+    if kb_obj is None:
+        if kb_path is None:
+            raise ValueError("either kb_path or kb_obj must be provided")
+        kb_obj = load_uca_knowledge_base(kb_path)
+    artifacts = compile_knowledge_base(kb_obj)
+    if compiled_spec_dir:
+        write_compiled_rules(artifacts, compiled_spec_dir)
+    rules = [Rule.from_text(item.spec_text) for item in artifacts]
+    return rules, len(artifacts)
 
 
-def _default_manual_predicates(category: str) -> list[str]:
-    funcs = category_checks.get(category, [])
-    return [fn.__name__ for fn in funcs if fn.__name__ in CODE_PREDICATE_TABLE]
-
-
-def detect_risk(code: str, category: str | None = None) -> bool:
-    if category:
-        category_predicates = _default_manual_predicates(category)
-        if category_predicates:
-            return _eval_predicate_list(code, category_predicates)
-    fallback_checks = (submit_post_request, request_untrusted_source, write_to_io, involve_bash_rc)
-    return any(fn("", code, []) for fn in fallback_checks)
-
-
-def should_block(mode: str, code: str, category: str, generated_rules: dict[str, list[str]] | None = None) -> bool:
-    if mode == "baseline":
-        return False
-    if mode == "manual":
-        return detect_risk(code, category=category)
-    if mode == "generated":
-        if generated_rules:
-            names = generated_rules.get(category, [])
-            if names:
-                return _eval_predicate_list(code, names)
-        # Fallback for compatibility when external generated rules are not provided.
-        return detect_risk(code, category=category) or ("os.system" in code and "curl" in code)
-    raise ValueError(f"unsupported mode: {mode}")
+def enforce_code_once(code: str, rules: list[Rule], *, event: str = "PythonREPL") -> tuple[bool, float, str | None]:
+    started = time.perf_counter()
+    action = Action(name=event, input=code, action=None)
+    state = RuleState(action=action, intermediate_steps=[], user_input=code)
+    blocked = False
+    blocked_rule_id: str | None = None
+    for rule in rules:
+        if rule.triggered(action.name, str(action.input)):
+            interpreter = RuleInterpreter(rule, state)
+            res, _next_action = interpreter.verify_and_enforce(action)
+            if res in (EnforceResult.SKIP, EnforceResult.STOP):
+                blocked = True
+                blocked_rule_id = rule.id
+                break
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    return blocked, elapsed_ms, blocked_rule_id
 
 
 def load_cases(
@@ -116,9 +134,39 @@ def run(
     redcode_root: Path,
     max_cases_per_category: int,
     benign_json: Path | None = None,
+    code_kb: Path = DEFAULT_CODE_KB,
+    generated_code_kb: Path | None = None,
     generated_rules_json: Path | None = None,
+    compiled_spec_dir: Path | None = None,
 ) -> dict:
-    generated_rules = _load_generated_rules(generated_rules_json) if mode == "generated" else {}
+    runtime_source = "none"
+    rule_source = ""
+    compiled_rule_count = 0
+    rules: list[Rule] = []
+
+    if mode == "manual":
+        rules, compiled_rule_count = load_rules_from_uca(kb_path=code_kb, compiled_spec_dir=compiled_spec_dir)
+        runtime_source = "spec_enforcement"
+        rule_source = str(code_kb)
+    elif mode == "generated":
+        if generated_code_kb:
+            rules, compiled_rule_count = load_rules_from_uca(
+                kb_path=generated_code_kb,
+                compiled_spec_dir=compiled_spec_dir,
+            )
+            runtime_source = "spec_enforcement"
+            rule_source = str(generated_code_kb)
+        elif generated_rules_json:
+            compat_kb = _load_generated_rules_as_kb(generated_rules_json)
+            rules, compiled_rule_count = load_rules_from_uca(
+                kb_obj=compat_kb,
+                compiled_spec_dir=compiled_spec_dir,
+            )
+            runtime_source = "spec_enforcement"
+            rule_source = f"{generated_rules_json} (deprecated generated-rules-json compatibility)"
+        else:
+            raise ValueError("generated mode requires --generated-code-kb (or deprecated --generated-rules-json)")
+
     raw_cases = load_cases(
         redcode_root,
         max_cases_per_category=max_cases_per_category,
@@ -126,22 +174,35 @@ def run(
     )
     scored: list[dict] = []
     for case in raw_cases:
-        begin = time.perf_counter()
-        blocked = should_block(mode, case["code"], case.get("category", ""), generated_rules=generated_rules)
-        elapsed_ms = (time.perf_counter() - begin) * 1000
+        blocked_rule_id: str | None = None
+        if mode == "baseline":
+            begin = time.perf_counter()
+            blocked = False
+            elapsed_ms = (time.perf_counter() - begin) * 1000
+        else:
+            blocked, elapsed_ms, blocked_rule_id = enforce_code_once(case["code"], rules, event="PythonREPL")
         scored.append(
             {
                 "case_id": case["case_id"],
                 "category": case.get("category"),
                 "is_risky": case["is_risky"],
                 "blocked": blocked,
+                "blocked_by_rule_id": blocked_rule_id,
                 "fulfilled": not blocked,
                 "overhead_ms": round(elapsed_ms, 6),
             }
         )
     metrics = evaluate_cases(scored)
     by_category = [m.to_dict() for m in evaluate_cases_by_category(scored)]
-    return {"mode": mode, "metrics": metrics.to_dict(), "metrics_by_category": by_category, "cases": scored}
+    return {
+        "mode": mode,
+        "runtime_source": runtime_source,
+        "rule_source": rule_source,
+        "compiled_rule_count": compiled_rule_count,
+        "metrics": metrics.to_dict(),
+        "metrics_by_category": by_category,
+        "cases": scored,
+    }
 
 
 def main() -> int:
@@ -151,10 +212,28 @@ def main() -> int:
     parser.add_argument("--max-cases-per-category", type=int, default=5)
     parser.add_argument("--benign-json", type=Path, required=False)
     parser.add_argument(
+        "--code-kb",
+        type=Path,
+        default=DEFAULT_CODE_KB,
+        help="Code-domain UCA knowledge base for manual mode.",
+    )
+    parser.add_argument(
+        "--generated-code-kb",
+        type=Path,
+        required=False,
+        help="Generated UCA knowledge base for generated mode (preferred).",
+    )
+    parser.add_argument(
         "--generated-rules-json",
         type=Path,
         required=False,
-        help="Optional generated rules mapping (category -> predicate names), used in generated mode.",
+        help="Deprecated compatibility input: generated mapping (category -> predicate names).",
+    )
+    parser.add_argument(
+        "--compiled-spec-dir",
+        type=Path,
+        required=False,
+        help="Optional directory to dump compiled .spec files for audit/reproducibility.",
     )
     parser.add_argument("--result-json", type=Path, required=True)
     parser.add_argument("--report-md", type=Path, required=True)
@@ -165,7 +244,10 @@ def main() -> int:
         redcode_root=args.redcode_root,
         max_cases_per_category=args.max_cases_per_category,
         benign_json=args.benign_json,
+        code_kb=args.code_kb,
+        generated_code_kb=args.generated_code_kb,
         generated_rules_json=args.generated_rules_json,
+        compiled_spec_dir=args.compiled_spec_dir,
     )
     args.result_json.parent.mkdir(parents=True, exist_ok=True)
     args.report_md.parent.mkdir(parents=True, exist_ok=True)

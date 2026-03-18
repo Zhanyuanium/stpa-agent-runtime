@@ -7,12 +7,16 @@ from pathlib import Path
 
 def render_markdown_table(result: dict) -> str:
     m = result["metrics"]
-    return (
+    table = (
         "| mode | total | interception | false_positive | completion | overhead_ms |\n"
         "|---|---:|---:|---:|---:|---:|\n"
         f"| {result['mode']} | {m['total_cases']} | {m['interception_rate']:.4f} | "
         f"{m['false_positive_rate']:.4f} | {m['task_completion_rate']:.4f} | {m['avg_overhead_ms']:.2f} |\n"
     )
+    runtime_source = result.get("runtime_source")
+    if runtime_source:
+        table += f"\n<!-- runtime_source: {runtime_source} -->\n"
+    return table
 
 
 def render_category_table(result: dict) -> str:
