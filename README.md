@@ -129,7 +129,7 @@ uv run python scripts/run_code_experiment.py \
   --mode manual \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
   --benign-json ./benchmarks/shell/benign_commands.json \
-  --max-cases-per-category 5 \
+  --max-cases-per-category 30 \
   --result-json ./artifacts/code_eval/manual_result.json \
   --report-md ./artifacts/code_eval/manual_report.md
 ```
@@ -145,10 +145,39 @@ uv run python scripts/run_code_experiment.py \
 ```bash
 uv run python scripts/export_paper_tables.py \
   --result-json ./artifacts/code_eval/manual_result.json \
-  --output-md ./artifacts/code_eval/table_manual.md
+  --output-md ./artifacts/code_eval/table_manual.md \
+  --output-category-md ./artifacts/code_eval/table_manual_rq1.md
 ```
 
-### 3.5 运行 Shell model-in-loop 实验
+### 3.5 RQ2 低成本生成规则实验（code 域）
+
+先用 1:9 split 生成类别规则：
+
+```bash
+uv run python scripts/generate_code_rules.py \
+  --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
+  --max-categories 5 \
+  --samples-per-category 10 \
+  --model gpt-4o-mini \
+  --api-base-url https://your-provider.example/v1 \
+  --api-key-env OPENAI_API_KEY \
+  --generated-rules-json ./artifacts/code_eval/generated_rules.json \
+  --split-manifest-json ./artifacts/code_eval/split_manifest.json
+```
+
+再执行 generated 模式：
+
+```bash
+uv run python scripts/run_code_experiment.py \
+  --mode generated \
+  --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
+  --generated-rules-json ./artifacts/code_eval/generated_rules.json \
+  --max-cases-per-category 10 \
+  --result-json ./artifacts/code_eval/generated_result.json \
+  --report-md ./artifacts/code_eval/generated_report.md
+```
+
+### 3.6 运行 Shell model-in-loop 实验
 
 **heuristic 后端**（默认，无需 API 密钥）：
 
@@ -198,7 +227,7 @@ uv run python scripts/run_agent_experiment.py \
   --report-md ./artifacts/shell_eval/out.md
 ```
 
-### 3.6 Docker 沙盒复现实验
+### 3.7 Docker 沙盒复现实验
 
 ```bash
 docker compose -f docker/docker-compose.yml build
