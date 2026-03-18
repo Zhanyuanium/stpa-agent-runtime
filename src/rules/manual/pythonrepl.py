@@ -141,8 +141,8 @@ def read_io(user_input, tool_input, intermediate_steps):
     patterns = {
         # r"(?:open\([^\)]*\)\s*\.?\s*(?:read(?:line)?\([^\)]*\))"
         r"(?:with\s+open\([^\)]*\)\s*as\s+\w+\s*:\s*(?:\w+\s*=\s*\w+\.?\s*(?:read(?:line)?\([^\)]*\))))",
-        "\.recv",
-        "os\.dup2"
+        r"\.recv",
+        r"os\.dup2"
     }
     return any(re.search(pattern, tool_input) for pattern in patterns) 
 
@@ -582,8 +582,9 @@ def detect_duplicate_keys_in_code(user_input, tool_input, intermediate_steps) ->
                         # Check for duplicates
                         if len(key_values) != len(set(key_values)):
                             return True
-    except Exception as e:
-        print(f"Error processing code: {e}")
+    except Exception:
+        # Invalid/unparseable snippets are treated as non-match.
+        return False
     return False
 
 checks = {

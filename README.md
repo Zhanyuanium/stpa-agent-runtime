@@ -149,6 +149,30 @@ uv run python scripts/export_paper_tables.py \
   --output-category-md ./artifacts/code_eval/table_manual_rq1.md
 ```
 
+### 3.4.1 一键运行 code 域 RQ1/RQ2 输出（推荐）
+
+仅跑 RQ1（baseline + manual）：
+
+```bash
+uv run python scripts/run_code_eval_suite.py \
+  --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
+  --benign-json ./benchmarks/shell/benign_commands.json \
+  --output-dir ./artifacts/code_eval \
+  --max-cases-per-category 30
+```
+
+包含 RQ2 generated（使用已有规则文件）：
+
+```bash
+uv run python scripts/run_code_eval_suite.py \
+  --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
+  --benign-json ./benchmarks/shell/benign_commands.json \
+  --output-dir ./artifacts/code_eval \
+  --max-cases-per-category 10 \
+  --include-generated \
+  --generated-rules-json ./artifacts/code_eval/generated_rules.json
+```
+
 ### 3.5 RQ2 低成本生成规则实验（code 域）
 
 先用 1:9 split 生成类别规则：

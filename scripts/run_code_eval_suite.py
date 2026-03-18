@@ -1,0 +1,144 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from agentspec_codegen.eval import evaluate_cases, summarize_to_markdown
+
+# Support both invocation styles:
+# 1) `uv run python scripts/run_code_eval_suite.py ...`
+# 2) `uv run python -m scripts.run_code_eval_suite ...`
+try:
+    from scripts.export_paper_tables import render_category_table, render_markdown_table
+    from scripts.generate_code_rules import generate_rules
+    from scripts.run_code_experiment import run
+except ModuleNotFoundError:
+    from export_paper_tables import render_category_table, render_markdown_table
+    from generate_code_rules import generate_rules
+    from run_code_experiment import run
+
+
+def _write_mode_outputs(result: dict, output_dir: Path, mode: str) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    result_json = output_dir / f"{mode}_result.json"
+    report_md = output_dir / f"{mode}_report.md"
+    table_md = output_dir / f"{mode}_table.md"
+    table_category_md = output_dir / f"{mode}_table_rq1.md"
+
+    result_json.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    report_md.write_text(summarize_to_markdown(mode, evaluate_cases(result["cases"])), encoding="utf-8")
+    table_md.write_text(render_markdown_table(result), encoding="utf-8")
+    category_table = render_category_table(result)
+    if category_table:
+        table_category_md.write_text(category_table, encoding="utf-8")
+
+
+def run_suite(
+    *,
+    redcode_root: Path,
+    benign_json: Path | None,
+    output_dir: Path,
+    max_cases_per_category: int,
+    include_generated: bool,
+    generated_rules_json: Path | None,
+    auto_generate_rules: bool,
+    max_gen_categories: int | None,
+    gen_samples_per_category: int,
+    model: str,
+    api_base_url: str | None,
+    api_key_env: str,
+) -> dict[str, dict]:
+    results: dict[str, dict] = {}
+
+    baseline = run(
+        mode="baseline",
+        redcode_root=redcode_root,
+        max_cases_per_category=max_cases_per_category,
+        benign_json=benign_json,
+    )
+    _write_mode_outputs(baseline, output_dir, "baseline")
+    results["baseline"] = baseline
+
+    manual = run(
+        mode="manual",
+        redcode_root=redcode_root,
+        max_cases_per_category=max_cases_per_category,
+        benign_json=benign_json,
+    )
+    _write_mode_outputs(manual, output_dir, "manual")
+    results["manual"] = manual
+
+    if include_generated:
+        rules_path = generated_rules_json
+        if rules_path is None:
+            rules_path = output_dir / "generated_rules.json"
+        if auto_generate_rules:
+            generated, manifest = generate_rules(
+                redcode_root=redcode_root,
+                max_categories=max_gen_categories,
+                samples_per_category=gen_samples_per_category,
+                model=model,
+                api_base_url=api_base_url,
+                api_key_env=api_key_env,
+            )
+            rules_path.parent.mkdir(parents=True, exist_ok=True)
+            rules_path.write_text(json.dumps(generated, indent=2, ensure_ascii=False), encoding="utf-8")
+            (output_dir / "split_manifest.json").write_text(
+                json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+        generated_result = run(
+            mode="generated",
+            redcode_root=redcode_root,
+            max_cases_per_category=max_cases_per_category,
+            benign_json=benign_json,
+            generated_rules_json=rules_path,
+        )
+        _write_mode_outputs(generated_result, output_dir, "generated")
+        results["generated"] = generated_result
+
+    return results
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="One-command runner for code-domain RQ1/RQ2 experiment artifacts."
+    )
+    parser.add_argument("--redcode-root", type=Path, required=True)
+    parser.add_argument("--benign-json", type=Path, required=False)
+    parser.add_argument("--output-dir", type=Path, default=Path("artifacts/code_eval"))
+    parser.add_argument("--max-cases-per-category", type=int, default=30)
+    parser.add_argument("--include-generated", action="store_true")
+    parser.add_argument("--generated-rules-json", type=Path, default=None)
+    parser.add_argument("--auto-generate-rules", action="store_true")
+    parser.add_argument("--max-gen-categories", type=int, default=5)
+    parser.add_argument("--gen-samples-per-category", type=int, default=10)
+    parser.add_argument("--model", default="gpt-4o-mini")
+    parser.add_argument("--api-base-url", default=None)
+    parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
+    args = parser.parse_args()
+
+    if args.auto_generate_rules and not args.include_generated:
+        raise SystemExit("--auto-generate-rules requires --include-generated")
+
+    results = run_suite(
+        redcode_root=args.redcode_root,
+        benign_json=args.benign_json,
+        output_dir=args.output_dir,
+        max_cases_per_category=args.max_cases_per_category,
+        include_generated=args.include_generated,
+        generated_rules_json=args.generated_rules_json,
+        auto_generate_rules=args.auto_generate_rules,
+        max_gen_categories=args.max_gen_categories,
+        gen_samples_per_category=args.gen_samples_per_category,
+        model=args.model,
+        api_base_url=args.api_base_url,
+        api_key_env=args.api_key_env,
+    )
+    print(f"modes={','.join(sorted(results.keys()))}")
+    print(f"output_dir={args.output_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

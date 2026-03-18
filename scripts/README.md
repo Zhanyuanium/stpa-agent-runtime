@@ -5,6 +5,9 @@
 - `run_code_experiment.py`: run code-domain baseline/manual/generated experiments.
   - `manual`: category-specific predicates (`index1`..`index25`).
   - `generated`: supports external `--generated-rules-json` (category -> predicates).
+- `run_code_eval_suite.py`: one-command runner for code-domain outputs.
+  - produces `baseline/manual/(optional generated)` result + report + table + category table.
+  - optional `--include-generated` + `--generated-rules-json`, or `--auto-generate-rules`.
 - `generate_code_rules.py`: generate low-cost category rules for RQ2-style evaluation.
   - 1:9 split per category; outputs `generated_rules.json` and `split_manifest.json`.
   - supports OpenAI-compatible endpoint via `--api-base-url` and API key env via `--api-key-env`.
