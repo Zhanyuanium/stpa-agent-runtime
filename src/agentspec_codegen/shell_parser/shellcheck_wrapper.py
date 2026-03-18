@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import contextvars
 import json
 import subprocess
 from dataclasses import dataclass
 from typing import Any
+
+_shellcheck_for_audit: contextvars.ContextVar[tuple[str, "ShellcheckResult"] | None] = (
+    contextvars.ContextVar("shellcheck_for_audit", default=None)
+)
 
 
 @dataclass(frozen=True)
@@ -39,3 +44,40 @@ def run_shellcheck(command_text: str) -> ShellcheckResult:
         return ShellcheckResult(available=True, diagnostics=[], stderr=proc.stderr.strip())
     except json.JSONDecodeError:
         return ShellcheckResult(available=True, diagnostics=[], stderr=proc.stderr.strip())
+
+
+def ensure_shellcheck_run(command_text: str) -> ShellcheckResult:
+    """
+    Run shellcheck if not already cached for this command. Store result for audit.
+    Call from shell predicate/parsing layer. Graceful fallback when shellcheck unavailable.
+    """
+    if not command_text or not command_text.strip():
+        return ShellcheckResult(available=False, diagnostics=[], stderr="")
+    cached = _shellcheck_for_audit.get()
+    if cached is not None and cached[0] == command_text:
+        return cached[1]
+    result = run_shellcheck(command_text)
+    _shellcheck_for_audit.set((command_text, result))
+    return result
+
+
+def get_shellcheck_summary_for_audit() -> dict[str, Any] | None:
+    """
+    Return serializable shellcheck summary for runtime audit, then clear the stored result.
+    """
+    cached = _shellcheck_for_audit.get()
+    _shellcheck_for_audit.set(None)
+    if cached is None:
+        return None
+    result = cached[1]
+    level_counts: dict[str, int] = {"error": 0, "warning": 0, "info": 0}
+    for d in result.diagnostics:
+        level = d.get("level", "info")
+        if level in level_counts:
+            level_counts[level] += 1
+    return {
+        "available": result.available,
+        "diagnostic_count": len(result.diagnostics),
+        "level_counts": level_counts,
+        "stderr": result.stderr or "",
+    }

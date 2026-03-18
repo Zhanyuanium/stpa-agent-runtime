@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -11,6 +13,7 @@ class RuleAuditRecord(BaseModel):
     action_name: str
     enforce_result: str
     detail: str = ""
+    shellcheck_summary: dict[str, Any] | None = None
 
 
 class RuleRuntimeContext(BaseModel):

@@ -27,6 +27,7 @@ from langchain.agents.loading import AGENT_TO_CLASS, load_agent
 from langchain_core.runnables import Runnable, RunnableConfig
 from typing import Dict
 from agentspec_codegen.runtime import RuleAuditRecord
+from agentspec_codegen.shell_parser import get_shellcheck_summary_for_audit
 
 
 NextStepOutput = List[Union[AgentFinish, AgentAction, AgentStep]]
@@ -87,6 +88,7 @@ class ControlledAgentExecutor(AgentExecutor) :
             if action.is_finish() and rule.trigger_finished() or rule.triggered(action.name, action.input): 
                 interpreter = RuleInterpreter(rule, state)
                 res, action = interpreter.verify_and_enforce(action)
+                shellcheck_summary = get_shellcheck_summary_for_audit()
                 state.runtime_context.add_audit(
                     RuleAuditRecord(
                         rule_id=rule.id,
@@ -94,6 +96,7 @@ class ControlledAgentExecutor(AgentExecutor) :
                         action_name=state.action.name if state.action else "",
                         enforce_result=res.name.lower(),
                         detail=str(interpreter.cond_eval_history),
+                        shellcheck_summary=shellcheck_summary,
                     )
                 )
                 if res == EnforceResult.CONTINUE:

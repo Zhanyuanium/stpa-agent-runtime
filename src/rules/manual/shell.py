@@ -9,7 +9,7 @@ from agentspec_codegen.predicates.os_checks import (
     is_permission_change_risky,
     is_sensitive_path,
 )
-from agentspec_codegen.shell_parser import extract_command_features
+from agentspec_codegen.shell_parser import extract_command_features, ensure_shellcheck_run
 
 
 def _as_text(tool_input: object) -> str:
@@ -18,45 +18,64 @@ def _as_text(tool_input: object) -> str:
     return str(tool_input)
 
 
+def _ensure_shellcheck(cmd: str) -> None:
+    """Run shellcheck for audit; graceful fallback when unavailable."""
+    if cmd:
+        ensure_shellcheck_run(cmd)
+
+
 def shell_is_destructive_delete(user_input, tool_input, intermediate_steps) -> bool:
     cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
     parsed = extract_command_features(cmd)
     return "destructive_delete" in parsed.risk_flags
 
 
 def shell_touches_sensitive_path(user_input, tool_input, intermediate_steps) -> bool:
     cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
     parsed = extract_command_features(cmd)
     return any(is_sensitive_path(path) for path in parsed.paths)
 
 
 def shell_requires_privilege(user_input, tool_input, intermediate_steps) -> bool:
-    cmd = _as_text(tool_input).lower()
+    cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
+    cmd = cmd.lower()
     return bool(re.search(r"\b(sudo|su)\b", cmd))
 
 
 def shell_missing_change_ticket(user_input, tool_input, intermediate_steps) -> bool:
     """Simple governance gate: require CHG- ticket marker in request."""
+    cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
     prompt = _as_text(user_input)
     return "chg-" not in prompt.lower()
 
 
 def shell_modifies_profile_startup(user_input, tool_input, intermediate_steps) -> bool:
-    cmd = _as_text(tool_input).lower()
+    cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
+    cmd = cmd.lower()
     profile_markers = [".bashrc", ".zshrc", "/etc/profile", "/etc/bash.bashrc"]
     return any(marker in cmd for marker in profile_markers)
 
 
 def shell_untrusted_network_target(user_input, tool_input, intermediate_steps) -> bool:
-    return is_network_target_untrusted(_as_text(tool_input))
+    cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
+    return is_network_target_untrusted(cmd)
 
 
 def shell_permission_change_risky(user_input, tool_input, intermediate_steps) -> bool:
-    return is_permission_change_risky(_as_text(tool_input))
+    cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
+    return is_permission_change_risky(cmd)
 
 
 def shell_target_has_backup(user_input, tool_input, intermediate_steps) -> bool:
     cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
     parsed = extract_command_features(cmd)
     for path in parsed.paths:
         if has_backup_for_target(path):
@@ -67,6 +86,7 @@ def shell_target_has_backup(user_input, tool_input, intermediate_steps) -> bool:
 # Grammar-compatible predicate names (existing tokens) are mapped to shell-aware logic.
 def destuctive_os_inst(user_input, tool_input, intermediate_steps) -> bool:
     cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
     return bool(re.search(r"\b(rm|unlink)\b", cmd)) or shell_is_destructive_delete(
         user_input, tool_input, intermediate_steps
     )
@@ -74,18 +94,22 @@ def destuctive_os_inst(user_input, tool_input, intermediate_steps) -> bool:
 
 def involve_system_file(user_input, tool_input, intermediate_steps) -> bool:
     cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
     parsed = extract_command_features(cmd)
     return any(is_sensitive_path(path) for path in parsed.paths)
 
 
 def is_improper_execution_privilege_code(user_input, tool_input, intermediate_steps) -> bool:
     cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
     return shell_requires_privilege(user_input, tool_input, intermediate_steps) or shell_permission_change_risky(
         user_input, cmd, intermediate_steps
     )
 
 
 def involve_bash_rc(user_input, tool_input, intermediate_steps) -> bool:
+    cmd = _as_text(tool_input)
+    _ensure_shellcheck(cmd)
     return shell_modifies_profile_startup(user_input, tool_input, intermediate_steps)
 
 

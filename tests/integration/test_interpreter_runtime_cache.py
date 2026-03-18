@@ -7,6 +7,44 @@ from interpreter import RuleInterpreter
 from rule import Rule
 from rules.manual.table import predicate_table
 from state import RuleState
+from agentspec_codegen.shell_parser import get_shellcheck_summary_for_audit
+from agentspec_codegen.runtime import RuleAuditRecord
+
+
+def test_shell_predicate_populates_shellcheck_for_audit() -> None:
+    """When a shell rule runs, shellcheck is invoked and available for runtime audit."""
+    rule = Rule.from_text(
+        """rule @shell_destructive
+trigger
+    TerminalExecute
+check
+    destuctive_os_inst
+enforce
+    stop
+end
+"""
+    )
+    action = Action.from_langchain(
+        AgentAction(tool="TerminalExecute", tool_input="sudo rm -rf /etc/nginx", log="")
+    )
+    state = RuleState(action=action, intermediate_steps=[], user_input="")
+    interpreter = RuleInterpreter(rule, state)
+    interpreter.verify_and_enforce(action)
+    summary = get_shellcheck_summary_for_audit()
+    assert summary is not None
+    assert "available" in summary
+    assert "diagnostic_count" in summary
+    assert "level_counts" in summary
+    record = RuleAuditRecord(
+        rule_id=rule.id,
+        event=rule.event,
+        action_name=action.name,
+        enforce_result="stop",
+        detail="{}",
+        shellcheck_summary=summary,
+    )
+    assert record.shellcheck_summary["available"] in (True, False)
+    assert record.shellcheck_summary["diagnostic_count"] >= 0
 
 
 def test_rule_interpreter_uses_predicate_cache() -> None:

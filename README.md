@@ -4,7 +4,7 @@
 
 - 离线分析层：`STPA/UCA -> 结构化知识库`
 - 规则生成层：`UCA -> AgentSpec DSL (.spec)`
-- 在线执行层：`运行时拦截、缓存、审计`
+- 在线执行层：`运行时拦截、缓存、审计`（含 shellcheck 诊断并入审计）
 - 实验评估层：`baseline/manual/generated` 与 `model-in-loop` 评测
 
 本分支**不包含 OSWorld，不包含 embodied/AV 方向实现**，重点是代码域与 Shell 域安全治理。
@@ -150,13 +150,49 @@ uv run python scripts/export_paper_tables.py \
 
 ### 3.5 运行 Shell model-in-loop 实验
 
+**heuristic 后端**（默认，无需 API 密钥）：
+
 ```bash
 uv run python scripts/run_agent_experiment.py \
+  --backend heuristic \
   --shell-kb ./data/uca/shell/shell_kb.json \
   --risky-json ./benchmarks/shell/risky_commands.json \
   --benign-json ./benchmarks/shell/benign_commands.json \
   --result-json ./artifacts/shell_eval/model_in_loop_result.json \
   --report-md ./artifacts/shell_eval/model_in_loop_report.md
+```
+
+**可选 LLM 后端**（需配置 `OPENAI_API_KEY`）：
+
+```bash
+uv run python scripts/run_agent_experiment.py \
+  --backend model --provider openai --model gpt-4o-mini \
+  --risky-json ./benchmarks/shell/risky_commands.json \
+  --benign-json ./benchmarks/shell/benign_commands.json \
+  --result-json ./artifacts/shell_eval/model_result.json \
+  --report-md ./artifacts/shell_eval/model_report.md
+```
+
+参数说明：
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `--backend` | `heuristic`（规则）或 `model`（LLM） | `heuristic` |
+| `--provider` | LLM 提供商：`openai`、`azure` | `openai` |
+| `--model` | 模型名称 | `gpt-4o-mini` |
+| `--shell-kb` | UCA 知识库路径（仅 heuristic） | `data/uca/shell/shell_kb.json` |
+| `--risky-json` | 风险命令用例 JSON | 必填 |
+| `--benign-json` | 良性命令用例 JSON | 可选 |
+| `--result-json` | 结果输出路径 | 必填 |
+| `--report-md` | 报告输出路径 | 必填 |
+
+**最少可运行示例**（仅 heuristic，无 benign）：
+
+```bash
+uv run python scripts/run_agent_experiment.py \
+  --risky-json ./benchmarks/shell/risky_commands.json \
+  --result-json ./artifacts/shell_eval/out.json \
+  --report-md ./artifacts/shell_eval/out.md
 ```
 
 ### 3.6 Docker 沙盒复现实验
@@ -210,14 +246,17 @@ uv run python scripts/verify_dataset.py --redcode-root <path>
   - 规则触发与谓词求值
   - predicate cache
   - 审计记录（rule/event/action/result/detail）
+  - Shell 域：shellcheck 诊断可并入 `detail`，供审计追溯
 
 ### 5.4 Shell/OS 感知层
 
 - 位置：`src/agentspec_codegen/shell_parser`、`src/agentspec_codegen/predicates`、`src/rules/manual/shell.py`
 - 职责：
   - 解析 shell 命令并提取风险标志
+  - **shellcheck 诊断**：`shellcheck_wrapper` 对命令做静态分析，结果可并入运行时审计的 `detail` 字段；未安装 shellcheck 时优雅降级（`available=False`）
   - 路径敏感性、权限变更、网络目标等 OS 上下文判定
   - 为运行时解释器提供可审计的 shell predicate
+
 ### 5.5 评估层
 
 - 位置：`src/agentspec_codegen/eval`、`scripts/run_code_experiment.py`
@@ -263,6 +302,14 @@ A:
 2. 更新 `ATTACK_TACTIC_TO_RISKS` 映射  
 3. 更新编译器默认映射  
 4. 新增单元测试、golden 测试和文档说明
+
+### Q4: shellcheck 未安装会怎样？
+
+A: `shellcheck_wrapper` 会优雅降级，返回 `available=False`、`diagnostics=[]`，不会抛错。若需完整 shellcheck 诊断并入审计，请安装：`apt install shellcheck`（Debian/Ubuntu）或 `brew install shellcheck`（macOS）。
+
+### Q5: 使用 `--backend model` 时报错缺少 API 密钥？
+
+A: 需设置 `OPENAI_API_KEY`。示例：`export OPENAI_API_KEY=sk-...`。Azure 使用 `AZURE_OPENAI_API_KEY` 与 `AZURE_OPENAI_DEPLOYMENT`。
 
 ---
 
