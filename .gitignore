@@ -1,3 +1,15 @@
-.aider*
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 .env
-openai.sh
+uv.lock
+.venv/
+
+/.idea/
+/.vscode/
+/.cursor/
+
+/benchmarks/RedCode-Exec/
+/artifacts/
