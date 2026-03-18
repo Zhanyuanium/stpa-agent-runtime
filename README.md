@@ -170,12 +170,12 @@ uv run python scripts/run_code_eval_suite.py \
   --output-dir ./artifacts/code_eval \
   --max-cases-per-category 10 \
   --include-generated \
-  --generated-rules-json ./artifacts/code_eval/generated_rules.json
+  --generated-code-kb ./artifacts/code_eval/generated_code_kb.json
 ```
 
 ### 3.5 RQ2 低成本生成规则实验（code 域）
 
-先用 1:9 split 生成类别规则：
+先用 1:9 split 生成结构化 UCA 知识库：
 
 ```bash
 uv run python scripts/generate_code_rules.py \
@@ -185,7 +185,7 @@ uv run python scripts/generate_code_rules.py \
   --model gpt-4o-mini \
   --api-base-url https://your-provider.example/v1 \
   --api-key-env OPENAI_API_KEY \
-  --generated-rules-json ./artifacts/code_eval/generated_rules.json \
+  --generated-code-kb-json ./artifacts/code_eval/generated_code_kb.json \
   --split-manifest-json ./artifacts/code_eval/split_manifest.json
 ```
 
@@ -195,7 +195,7 @@ uv run python scripts/generate_code_rules.py \
 uv run python scripts/run_code_experiment.py \
   --mode generated \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
-  --generated-rules-json ./artifacts/code_eval/generated_rules.json \
+  --generated-code-kb ./artifacts/code_eval/generated_code_kb.json \
   --max-cases-per-category 10 \
   --result-json ./artifacts/code_eval/generated_result.json \
   --report-md ./artifacts/code_eval/generated_report.md

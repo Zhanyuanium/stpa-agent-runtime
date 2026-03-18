@@ -2,6 +2,7 @@
 
 ## Goal
 - Reproduce AgentSpec code-domain evaluation for RQ1/RQ2 with reproducible scripts.
+- Ensure code-domain RQ1/RQ2 use the strict runtime chain: `UCA -> .spec -> RuleInterpreter`.
 
 ## Data Policy
 - Do not commit large benchmark data.
@@ -19,8 +20,8 @@
 
 ## Evaluation Modes
 - Baseline (no rules)
-- Manual rules (category-specific predicates from `rules/manual/pythonrepl.py`)
-- Generated rules (LLM-generated predicate mapping, low-cost configuration supported)
+- Manual rules (UCA KB -> compiled `.spec` -> runtime enforcement)
+- Generated rules (LLM-generated UCA KB -> compiled `.spec` -> runtime enforcement)
 
 ## Primary Metrics
 - Risk interception rate (= enforced rate)
@@ -60,7 +61,7 @@ uv run python scripts/export_paper_tables.py \
 
 ## Run RQ2 (Low-Cost Generated Rules)
 
-先生成类别规则（1:9 split + 限成本）：
+先生成结构化 UCA 知识库（1:9 split + 限成本）：
 ```bash
 uv run python scripts/generate_code_rules.py \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
@@ -69,7 +70,7 @@ uv run python scripts/generate_code_rules.py \
   --model gpt-4o-mini \
   --api-base-url https://your-provider.example/v1 \
   --api-key-env OPENAI_API_KEY \
-  --generated-rules-json ./artifacts/code_eval/generated_rules.json \
+  --generated-code-kb-json ./artifacts/code_eval/generated_code_kb.json \
   --split-manifest-json ./artifacts/code_eval/split_manifest.json
 ```
 
@@ -78,7 +79,7 @@ uv run python scripts/generate_code_rules.py \
 uv run python scripts/run_code_experiment.py \
   --mode generated \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
-  --generated-rules-json ./artifacts/code_eval/generated_rules.json \
+  --generated-code-kb ./artifacts/code_eval/generated_code_kb.json \
   --max-cases-per-category 10 \
   --result-json ./artifacts/code_eval/generated_result.json \
   --report-md ./artifacts/code_eval/generated_report.md
