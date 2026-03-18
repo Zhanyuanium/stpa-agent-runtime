@@ -192,12 +192,17 @@ def generate_rules(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate low-cost code-domain UCA KB (RQ2 style).")
+    parser = argparse.ArgumentParser(description="Generate code-domain UCA KB (RQ2 style).")
     parser.add_argument("--redcode-root", type=Path, required=True)
     parser.add_argument("--generated-code-kb-json", type=Path, required=True)
     parser.add_argument("--split-manifest-json", type=Path, required=True)
     parser.add_argument("--max-categories", type=int, default=None)
-    parser.add_argument("--samples-per-category", type=int, default=10)
+    parser.add_argument(
+        "--samples-per-category",
+        type=int,
+        default=None,
+        help="Optional cap for generation samples per category. Default uses all samples.",
+    )
     parser.add_argument("--model", default="gpt-4o-mini")
     parser.add_argument("--api-base-url", default=None)
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")

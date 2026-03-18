@@ -14,7 +14,9 @@ class RuleAuditRecord(BaseModel):
     enforce_result: str
     detail: str = ""
     uca_id: str | None = None
+    command_text: str | None = None
     shellcheck_summary: dict[str, Any] | None = None
+    shellcheck_diagnostics: list[dict[str, Any]] | None = None
 
 
 class RuleRuntimeContext(BaseModel):

@@ -69,15 +69,17 @@ def get_shellcheck_summary_for_audit() -> dict[str, Any] | None:
     _shellcheck_for_audit.set(None)
     if cached is None:
         return None
-    result = cached[1]
+    command_text, result = cached
     level_counts: dict[str, int] = {"error": 0, "warning": 0, "info": 0}
     for d in result.diagnostics:
         level = d.get("level", "info")
         if level in level_counts:
             level_counts[level] += 1
     return {
+        "command_text": command_text,
         "available": result.available,
         "diagnostic_count": len(result.diagnostics),
         "level_counts": level_counts,
         "stderr": result.stderr or "",
+        "diagnostics": result.diagnostics,
     }

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from agentspec_codegen.eval import evaluate_cases, evaluate_cases_by_category, summarize_to_markdown
-from agentspec_codegen.compiler.rule_compiler import compile_knowledge_base, write_compiled_rules
+from agentspec_codegen.compiler.rule_compiler import CompilationArtifact, compile_knowledge_base, write_compiled_rules
 from agentspec_codegen.uca.models import UcaKnowledgeBase
 from agentspec_codegen.uca.storage import load_uca_knowledge_base
 from agent import Action
@@ -22,38 +22,19 @@ def _extract_category_from_file(file: Path) -> str:
     return file.stem.split("_")[0]
 
 
-def _load_generated_rules_as_kb(path: Path) -> UcaKnowledgeBase:
-    """
-    Backward compatibility:
-    Convert deprecated generated-rules mapping (category -> predicate names)
-    to an in-memory UCA knowledge base so execution still goes through
-    UCA -> .spec -> RuleInterpreter chain.
-    """
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("generated rules json must be an object: {category: [predicate_names...]}")
-    entries = []
-    for category, predicates in data.items():
-        if not isinstance(category, str) or not isinstance(predicates, list):
-            continue
-        predicate_names = [name for name in predicates if isinstance(name, str)]
-        if not predicate_names:
-            continue
-        entries.append(
-            {
-                "uca_id": f"UCA-GEN-{category.upper()}",
-                "title": f"Generated runtime guard for {category}",
-                "domain": "code",
-                "risk_type": "untrusted_post_request",
-                "mitre_tactic": "exfiltration",
-                "trigger_event": "PythonREPL",
-                "predicate_hints": predicate_names,
-                "enforcement": "stop",
-                "rationale": f"Compatibility-generated UCA for category {category}.",
-                "metadata": {"source": "generated_rules_json", "category": category},
-            }
-        )
-    return UcaKnowledgeBase.model_validate({"version": "generated-compat-0.1.0", "entries": entries})
+def _safe_case_id(case_id: str) -> str:
+    return case_id.replace(":", "_").replace("/", "_").replace("\\", "_")
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _write_jsonl(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
+    path.write_text(content + ("\n" if content else ""), encoding="utf-8")
 
 
 def load_rules_from_uca(
@@ -61,7 +42,7 @@ def load_rules_from_uca(
     kb_path: Path | None = None,
     kb_obj: UcaKnowledgeBase | None = None,
     compiled_spec_dir: Path | None = None,
-) -> tuple[list[Rule], int]:
+) -> tuple[UcaKnowledgeBase, list[CompilationArtifact], list[Rule]]:
     if kb_obj is None:
         if kb_path is None:
             raise ValueError("either kb_path or kb_obj must be provided")
@@ -70,30 +51,64 @@ def load_rules_from_uca(
     if compiled_spec_dir:
         write_compiled_rules(artifacts, compiled_spec_dir)
     rules = [Rule.from_text(item.spec_text) for item in artifacts]
-    return rules, len(artifacts)
+    return kb_obj, artifacts, rules
 
 
-def enforce_code_once(code: str, rules: list[Rule], *, event: str = "PythonREPL") -> tuple[bool, float, str | None]:
+def enforce_code_once(
+    code: str,
+    rules: list[Rule],
+    *,
+    event: str = "PythonREPL",
+) -> tuple[bool, float, str | None, list[dict], list[dict]]:
     started = time.perf_counter()
     action = Action(name=event, input=code, action=None)
     state = RuleState(action=action, intermediate_steps=[], user_input=code)
     blocked = False
     blocked_rule_id: str | None = None
+    traces: list[dict] = []
+    audits: list[dict] = []
     for rule in rules:
-        if rule.triggered(action.name, str(action.input)):
-            interpreter = RuleInterpreter(rule, state)
-            res, _next_action = interpreter.verify_and_enforce(action)
-            if res in (EnforceResult.SKIP, EnforceResult.STOP):
-                blocked = True
-                blocked_rule_id = rule.id
-                break
+        triggered = rule.triggered(action.name, str(action.input))
+        if not triggered:
+            traces.append(
+                {
+                    "rule_id": rule.id,
+                    "event": rule.event,
+                    "triggered": False,
+                    "check_history": {},
+                    "enforce_result": "not_triggered",
+                }
+            )
+            continue
+        interpreter = RuleInterpreter(rule, state)
+        res, _next_action = interpreter.verify_and_enforce(action)
+        trace = {
+            "rule_id": rule.id,
+            "event": rule.event,
+            "triggered": True,
+            "check_history": interpreter.cond_eval_history,
+            "enforce_result": res.name.lower(),
+        }
+        traces.append(trace)
+        audits.append(
+            {
+                "rule_id": rule.id,
+                "event": rule.event,
+                "enforce_result": res.name.lower(),
+                "check_history": interpreter.cond_eval_history,
+            }
+        )
+        if res in (EnforceResult.SKIP, EnforceResult.STOP):
+            blocked = True
+            blocked_rule_id = rule.id
+            break
     elapsed_ms = (time.perf_counter() - started) * 1000
-    return blocked, elapsed_ms, blocked_rule_id
+    return blocked, elapsed_ms, blocked_rule_id, traces, audits
 
 
 def load_cases(
     redcode_root: Path,
-    max_cases_per_category: int,
+    max_cases_per_category: int | None,
     benign_json: Path | None = None,
 ) -> list[dict]:
     cases: list[dict] = []
@@ -101,7 +116,8 @@ def load_cases(
     for file in source_files:
         category = _extract_category_from_file(file)
         content = json.loads(file.read_text(encoding="utf-8"))
-        for i, sample in enumerate(content[: max_cases_per_category]):
+        scoped_content = content if max_cases_per_category is None else content[:max_cases_per_category]
+        for i, sample in enumerate(scoped_content):
             code = sample.get("Code") or sample.get("code") or ""
             sample_id = sample.get("Index", i)
             cases.append(
@@ -132,40 +148,67 @@ def load_cases(
 def run(
     mode: str,
     redcode_root: Path,
-    max_cases_per_category: int,
+    max_cases_per_category: int | None,
     benign_json: Path | None = None,
     code_kb: Path = DEFAULT_CODE_KB,
     generated_code_kb: Path | None = None,
-    generated_rules_json: Path | None = None,
     compiled_spec_dir: Path | None = None,
+    artifact_root: Path | None = None,
 ) -> dict:
     runtime_source = "none"
     rule_source = ""
     compiled_rule_count = 0
     rules: list[Rule] = []
+    artifacts: list[CompilationArtifact] = []
+    loaded_kb: UcaKnowledgeBase | None = None
+    stage_root = artifact_root
+    if stage_root is None:
+        stage_root = Path("artifacts") / "code_eval" / mode
 
     if mode == "manual":
-        rules, compiled_rule_count = load_rules_from_uca(kb_path=code_kb, compiled_spec_dir=compiled_spec_dir)
+        loaded_kb, artifacts, rules = load_rules_from_uca(kb_path=code_kb, compiled_spec_dir=compiled_spec_dir)
         runtime_source = "spec_enforcement"
         rule_source = str(code_kb)
+        compiled_rule_count = len(artifacts)
     elif mode == "generated":
-        if generated_code_kb:
-            rules, compiled_rule_count = load_rules_from_uca(
-                kb_path=generated_code_kb,
-                compiled_spec_dir=compiled_spec_dir,
-            )
-            runtime_source = "spec_enforcement"
-            rule_source = str(generated_code_kb)
-        elif generated_rules_json:
-            compat_kb = _load_generated_rules_as_kb(generated_rules_json)
-            rules, compiled_rule_count = load_rules_from_uca(
-                kb_obj=compat_kb,
-                compiled_spec_dir=compiled_spec_dir,
-            )
-            runtime_source = "spec_enforcement"
-            rule_source = f"{generated_rules_json} (deprecated generated-rules-json compatibility)"
-        else:
-            raise ValueError("generated mode requires --generated-code-kb (or deprecated --generated-rules-json)")
+        if generated_code_kb is None:
+            raise ValueError("generated mode requires --generated-code-kb")
+        loaded_kb, artifacts, rules = load_rules_from_uca(
+            kb_path=generated_code_kb,
+            compiled_spec_dir=compiled_spec_dir,
+        )
+        runtime_source = "spec_enforcement"
+        rule_source = str(generated_code_kb)
+        compiled_rule_count = len(artifacts)
+
+    # Stage outputs: 01~03 are run-level artifacts.
+    if runtime_source == "spec_enforcement" and loaded_kb is not None:
+        _write_json(stage_root / "01_uca_loaded.json", json.loads(loaded_kb.model_dump_json()))
+        spec_dir = stage_root / "02_compiled_specs"
+        write_compiled_rules(artifacts, spec_dir)
+        _write_json(
+            stage_root / "02_compiled_manifest.json",
+            [
+                {
+                    "rule_id": item.rule_id,
+                    "uca_id": item.uca_id,
+                    "predicates": item.predicates,
+                    "spec_path": str((spec_dir / f"{item.rule_id}.spec").as_posix()),
+                }
+                for item in artifacts
+            ],
+        )
+        _write_json(
+            stage_root / "03_rules_parsed.json",
+            [{"id": rule.id, "event": rule.event, "raw": rule.raw} for rule in rules],
+        )
+    else:
+        _write_json(
+            stage_root / "01_uca_loaded.json",
+            {"note": "baseline mode has no UCA/rules", "runtime_source": runtime_source},
+        )
+        _write_json(stage_root / "02_compiled_manifest.json", [])
+        _write_json(stage_root / "03_rules_parsed.json", [])
 
     raw_cases = load_cases(
         redcode_root,
@@ -173,14 +216,38 @@ def run(
         benign_json=benign_json,
     )
     scored: list[dict] = []
+    case_audits: list[dict] = []
     for case in raw_cases:
         blocked_rule_id: str | None = None
+        check_traces: list[dict] = []
+        audits: list[dict] = []
         if mode == "baseline":
             begin = time.perf_counter()
             blocked = False
             elapsed_ms = (time.perf_counter() - begin) * 1000
         else:
-            blocked, elapsed_ms, blocked_rule_id = enforce_code_once(case["code"], rules, event="PythonREPL")
+            blocked, elapsed_ms, blocked_rule_id, check_traces, audits = enforce_code_once(
+                case["code"], rules, event="PythonREPL"
+            )
+        trace_payload = {
+            "case_id": case["case_id"],
+            "category": case.get("category"),
+            "event": "PythonREPL",
+            "input_preview": str(case["code"])[:300],
+            "rules": check_traces,
+            "blocked": blocked,
+            "blocked_by_rule_id": blocked_rule_id,
+        }
+        _write_json(stage_root / "04_check_traces" / f"{_safe_case_id(case['case_id'])}.json", trace_payload)
+        case_audits.append(
+            {
+                "case_id": case["case_id"],
+                "event": "PythonREPL",
+                "blocked": blocked,
+                "blocked_by_rule_id": blocked_rule_id,
+                "audits": audits,
+            }
+        )
         scored.append(
             {
                 "case_id": case["case_id"],
@@ -192,6 +259,7 @@ def run(
                 "overhead_ms": round(elapsed_ms, 6),
             }
         )
+    _write_jsonl(stage_root / "05_case_audits.jsonl", case_audits)
     metrics = evaluate_cases(scored)
     by_category = [m.to_dict() for m in evaluate_cases_by_category(scored)]
     return {
@@ -199,6 +267,7 @@ def run(
         "runtime_source": runtime_source,
         "rule_source": rule_source,
         "compiled_rule_count": compiled_rule_count,
+        "artifact_root": str(stage_root),
         "metrics": metrics.to_dict(),
         "metrics_by_category": by_category,
         "cases": scored,
@@ -209,7 +278,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run code-domain AgentSpec experiment.")
     parser.add_argument("--mode", choices=["baseline", "manual", "generated"], required=True)
     parser.add_argument("--redcode-root", type=Path, required=True)
-    parser.add_argument("--max-cases-per-category", type=int, default=5)
+    parser.add_argument(
+        "--max-cases-per-category",
+        type=int,
+        default=None,
+        help="Optional cap per category. Default runs all available cases.",
+    )
     parser.add_argument("--benign-json", type=Path, required=False)
     parser.add_argument(
         "--code-kb",
@@ -221,19 +295,19 @@ def main() -> int:
         "--generated-code-kb",
         type=Path,
         required=False,
-        help="Generated UCA knowledge base for generated mode (preferred).",
-    )
-    parser.add_argument(
-        "--generated-rules-json",
-        type=Path,
-        required=False,
-        help="Deprecated compatibility input: generated mapping (category -> predicate names).",
+        help="Generated UCA knowledge base for generated mode.",
     )
     parser.add_argument(
         "--compiled-spec-dir",
         type=Path,
         required=False,
         help="Optional directory to dump compiled .spec files for audit/reproducibility.",
+    )
+    parser.add_argument(
+        "--artifact-root",
+        type=Path,
+        required=False,
+        help="Optional root for staged artifacts (01~05). Default: artifacts/code_eval/<mode>.",
     )
     parser.add_argument("--result-json", type=Path, required=True)
     parser.add_argument("--report-md", type=Path, required=True)
@@ -246,8 +320,8 @@ def main() -> int:
         benign_json=args.benign_json,
         code_kb=args.code_kb,
         generated_code_kb=args.generated_code_kb,
-        generated_rules_json=args.generated_rules_json,
         compiled_spec_dir=args.compiled_spec_dir,
+        artifact_root=args.artifact_root,
     )
     args.result_json.parent.mkdir(parents=True, exist_ok=True)
     args.report_md.parent.mkdir(parents=True, exist_ok=True)

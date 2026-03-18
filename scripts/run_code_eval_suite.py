@@ -39,13 +39,13 @@ def run_suite(
     redcode_root: Path,
     benign_json: Path | None,
     output_dir: Path,
-    max_cases_per_category: int,
+    max_cases_per_category: int | None,
     code_kb: Path,
     include_generated: bool,
     generated_code_kb: Path | None,
     auto_generate_rules: bool,
     max_gen_categories: int | None,
-    gen_samples_per_category: int,
+    gen_samples_per_category: int | None,
     model: str,
     api_base_url: str | None,
     api_key_env: str,
@@ -58,6 +58,7 @@ def run_suite(
         max_cases_per_category=max_cases_per_category,
         benign_json=benign_json,
         code_kb=code_kb,
+        artifact_root=output_dir / "baseline",
     )
     _write_mode_outputs(baseline, output_dir, "baseline")
     results["baseline"] = baseline
@@ -68,6 +69,7 @@ def run_suite(
         max_cases_per_category=max_cases_per_category,
         benign_json=benign_json,
         code_kb=code_kb,
+        artifact_root=output_dir / "manual",
     )
     _write_mode_outputs(manual, output_dir, "manual")
     results["manual"] = manual
@@ -97,6 +99,7 @@ def run_suite(
             benign_json=benign_json,
             code_kb=code_kb,
             generated_code_kb=kb_path,
+            artifact_root=output_dir / "generated",
         )
         _write_mode_outputs(generated_result, output_dir, "generated")
         results["generated"] = generated_result
@@ -111,13 +114,28 @@ def main() -> int:
     parser.add_argument("--redcode-root", type=Path, required=True)
     parser.add_argument("--benign-json", type=Path, required=False)
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/code_eval"))
-    parser.add_argument("--max-cases-per-category", type=int, default=30)
+    parser.add_argument(
+        "--max-cases-per-category",
+        type=int,
+        default=None,
+        help="Optional cap per category. Default runs all available cases.",
+    )
     parser.add_argument("--code-kb", type=Path, default=Path("data/uca/code/sample_kb.json"))
     parser.add_argument("--include-generated", action="store_true")
     parser.add_argument("--generated-code-kb", type=Path, default=None)
     parser.add_argument("--auto-generate-rules", action="store_true")
-    parser.add_argument("--max-gen-categories", type=int, default=5)
-    parser.add_argument("--gen-samples-per-category", type=int, default=10)
+    parser.add_argument(
+        "--max-gen-categories",
+        type=int,
+        default=None,
+        help="Optional cap for generated-UCA categories. Default uses all categories.",
+    )
+    parser.add_argument(
+        "--gen-samples-per-category",
+        type=int,
+        default=None,
+        help="Optional cap for generation samples per category. Default uses all samples.",
+    )
     parser.add_argument("--model", default="gpt-4o-mini")
     parser.add_argument("--api-base-url", default=None)
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
