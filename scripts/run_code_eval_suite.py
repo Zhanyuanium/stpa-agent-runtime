@@ -40,8 +40,9 @@ def run_suite(
     benign_json: Path | None,
     output_dir: Path,
     max_cases_per_category: int,
+    code_kb: Path,
     include_generated: bool,
-    generated_rules_json: Path | None,
+    generated_code_kb: Path | None,
     auto_generate_rules: bool,
     max_gen_categories: int | None,
     gen_samples_per_category: int,
@@ -56,6 +57,7 @@ def run_suite(
         redcode_root=redcode_root,
         max_cases_per_category=max_cases_per_category,
         benign_json=benign_json,
+        code_kb=code_kb,
     )
     _write_mode_outputs(baseline, output_dir, "baseline")
     results["baseline"] = baseline
@@ -65,16 +67,17 @@ def run_suite(
         redcode_root=redcode_root,
         max_cases_per_category=max_cases_per_category,
         benign_json=benign_json,
+        code_kb=code_kb,
     )
     _write_mode_outputs(manual, output_dir, "manual")
     results["manual"] = manual
 
     if include_generated:
-        rules_path = generated_rules_json
-        if rules_path is None:
-            rules_path = output_dir / "generated_rules.json"
+        kb_path = generated_code_kb
+        if kb_path is None:
+            kb_path = output_dir / "generated_code_kb.json"
         if auto_generate_rules:
-            generated, manifest = generate_rules(
+            generated_kb, manifest = generate_rules(
                 redcode_root=redcode_root,
                 max_categories=max_gen_categories,
                 samples_per_category=gen_samples_per_category,
@@ -82,8 +85,8 @@ def run_suite(
                 api_base_url=api_base_url,
                 api_key_env=api_key_env,
             )
-            rules_path.parent.mkdir(parents=True, exist_ok=True)
-            rules_path.write_text(json.dumps(generated, indent=2, ensure_ascii=False), encoding="utf-8")
+            kb_path.parent.mkdir(parents=True, exist_ok=True)
+            kb_path.write_text(generated_kb.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8")
             (output_dir / "split_manifest.json").write_text(
                 json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
             )
@@ -92,7 +95,8 @@ def run_suite(
             redcode_root=redcode_root,
             max_cases_per_category=max_cases_per_category,
             benign_json=benign_json,
-            generated_rules_json=rules_path,
+            code_kb=code_kb,
+            generated_code_kb=kb_path,
         )
         _write_mode_outputs(generated_result, output_dir, "generated")
         results["generated"] = generated_result
@@ -108,8 +112,9 @@ def main() -> int:
     parser.add_argument("--benign-json", type=Path, required=False)
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/code_eval"))
     parser.add_argument("--max-cases-per-category", type=int, default=30)
+    parser.add_argument("--code-kb", type=Path, default=Path("data/uca/code/sample_kb.json"))
     parser.add_argument("--include-generated", action="store_true")
-    parser.add_argument("--generated-rules-json", type=Path, default=None)
+    parser.add_argument("--generated-code-kb", type=Path, default=None)
     parser.add_argument("--auto-generate-rules", action="store_true")
     parser.add_argument("--max-gen-categories", type=int, default=5)
     parser.add_argument("--gen-samples-per-category", type=int, default=10)
@@ -126,8 +131,9 @@ def main() -> int:
         benign_json=args.benign_json,
         output_dir=args.output_dir,
         max_cases_per_category=args.max_cases_per_category,
+        code_kb=args.code_kb,
         include_generated=args.include_generated,
-        generated_rules_json=args.generated_rules_json,
+        generated_code_kb=args.generated_code_kb,
         auto_generate_rules=args.auto_generate_rules,
         max_gen_categories=args.max_gen_categories,
         gen_samples_per_category=args.gen_samples_per_category,

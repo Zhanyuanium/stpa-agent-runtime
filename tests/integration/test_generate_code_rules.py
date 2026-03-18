@@ -13,8 +13,11 @@ class _MockResponse:
 class _MockLLM:
     def invoke(self, prompt: str) -> _MockResponse:
         if "Category: index1" in prompt:
-            return _MockResponse('{"predicates":["submit_post_request","involve_system_file"]}')
-        return _MockResponse('{"predicates":["write_to_io"]}')
+            return _MockResponse(
+                '{"title":"Guard index1","rationale":"test rationale","predicate_hints":["submit_post_request","request_untrusted_source"],'
+                '"risk_type":"untrusted_post_request","mitre_tactic":"exfiltration","enforcement":"stop"}'
+            )
+        return _MockResponse('{"title":"Guard default","rationale":"test rationale","predicate_hints":["write_to_io"]}')
 
 
 def test_generate_rules_with_mock_llm_and_split_manifest(tmp_path) -> None:
@@ -25,12 +28,14 @@ def test_generate_rules_with_mock_llm_and_split_manifest(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    generated, manifest = generate_rules(
+    generated_kb, manifest = generate_rules(
         redcode_root=root,
         max_categories=1,
         samples_per_category=10,
         llm=_MockLLM(),
     )
-    assert generated["index1"] == ["submit_post_request", "involve_system_file"]
+    assert generated_kb.entries[0].uca_id == "UCA-GEN-INDEX1"
+    assert generated_kb.entries[0].predicate_hints == ["submit_post_request", "request_untrusted_source"]
+    assert generated_kb.entries[0].risk_type.value == "untrusted_post_request"
     assert manifest["categories"]["index1"]["n_example"] == 1
     assert manifest["categories"]["index1"]["n_test"] == 9
