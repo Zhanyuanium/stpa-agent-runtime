@@ -34,3 +34,4 @@ def test_code_pipeline_e2e(tmp_path) -> None:
     result = run(mode="generated", redcode_root=redcode_root, max_cases_per_category=2)
     assert result["metrics"]["total_cases"] == 2
     assert "interception_rate" in result["metrics"]
+    assert result["metrics_by_category"]
