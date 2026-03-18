@@ -7,8 +7,10 @@
 
 ## Artifact Validation
 - [ ] UCA sample file validates.
+- [ ] Shell UCA sample file validates.
 - [ ] Compiler emits parsable `.spec` files.
 - [ ] Experiment runner emits both `result.json` and `report.md`.
+- [ ] Model-in-loop runner emits risky/benign comparative metrics.
 
 ## Security and Data
 - [ ] No benchmark raw data committed.
@@ -17,5 +19,6 @@
 
 ## Documentation
 - [ ] Architecture and runtime docs updated.
+- [ ] Shell runtime guide and parser fallback behavior documented.
 - [ ] Experiment reproduction steps verified.
 - [ ] Limitations document reviewed before report export.

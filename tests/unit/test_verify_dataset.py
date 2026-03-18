@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from scripts.verify_dataset import verify_redcode_root
+from scripts.verify_dataset import verify_benign_dataset, verify_redcode_root
 
 
 def test_verify_dataset_success(tmp_path) -> None:
@@ -12,3 +12,11 @@ def test_verify_dataset_success(tmp_path) -> None:
     ok, msg = verify_redcode_root(root)
     assert ok
     assert "ok" in msg
+
+
+def test_verify_benign_dataset_success(tmp_path) -> None:
+    benign = tmp_path / "benign.json"
+    benign.write_text(json.dumps([{"command": "ls -la"}]), encoding="utf-8")
+    ok, msg = verify_benign_dataset(benign)
+    assert ok
+    assert "benign" in msg

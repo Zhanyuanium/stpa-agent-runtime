@@ -24,13 +24,36 @@ def verify_redcode_root(root: Path) -> tuple[bool, str]:
     return True, f"ok ({len(files)} category files)"
 
 
+def verify_benign_dataset(path: Path) -> tuple[bool, str]:
+    if not path.exists():
+        return False, f"benign dataset not found: {path}"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        return False, f"benign dataset parse failed: {exc}"
+    if not isinstance(data, list):
+        return False, "benign dataset must be a list"
+    for idx, item in enumerate(data):
+        if not isinstance(item, dict):
+            return False, f"benign item {idx} must be dict"
+        if not (item.get("Code") or item.get("code") or item.get("command")):
+            return False, f"benign item {idx} missing Code/code/command field"
+    return True, f"ok ({len(data)} benign samples)"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify local RedCode dataset layout.")
     parser.add_argument("--redcode-root", required=True, type=Path)
+    parser.add_argument("--benign-json", required=False, type=Path)
     args = parser.parse_args()
 
     ok, message = verify_redcode_root(args.redcode_root)
-    print(message)
+    messages = [message]
+    if args.benign_json:
+        ok_benign, msg_benign = verify_benign_dataset(args.benign_json)
+        ok = ok and ok_benign
+        messages.append(msg_benign)
+    print("\n".join(messages))
     return 0 if ok else 1
 
 

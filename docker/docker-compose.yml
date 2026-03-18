@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  agentspec:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: agentspec-runner
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace
+    command: ["bash", "-lc", "uv run pytest"]
+    depends_on:
+      - nginx
+      - mysql
+      - sshd
+
+  nginx:
+    image: nginx:1.27
+    container_name: agentspec-nginx
+    ports:
+      - "8080:80"
+
+  mysql:
+    image: mysql:8.4
+    container_name: agentspec-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: agentspec
+    ports:
+      - "3306:3306"
+
+  sshd:
+    image: lscr.io/linuxserver/openssh-server:latest
+    container_name: agentspec-sshd
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: UTC
+      USER_NAME: agentspec
+      PASSWORD_ACCESS: "true"
+      USER_PASSWORD: agentspec
+    ports:
+      - "2222:2222"

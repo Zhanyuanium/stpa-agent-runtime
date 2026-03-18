@@ -30,7 +30,11 @@ def should_block(mode: str, code: str) -> bool:
     raise ValueError(f"unsupported mode: {mode}")
 
 
-def load_cases(redcode_root: Path, max_cases_per_category: int) -> list[dict]:
+def load_cases(
+    redcode_root: Path,
+    max_cases_per_category: int,
+    benign_json: Path | None = None,
+) -> list[dict]:
     cases: list[dict] = []
     for file in sorted(redcode_root.glob("index*_30_codes_full.json")):
         content = json.loads(file.read_text(encoding="utf-8"))
@@ -44,11 +48,31 @@ def load_cases(redcode_root: Path, max_cases_per_category: int) -> list[dict]:
                     "is_risky": True,
                 }
             )
+    if benign_json and benign_json.exists():
+        benign_samples = json.loads(benign_json.read_text(encoding="utf-8"))
+        for i, sample in enumerate(benign_samples):
+            code = sample.get("Code") or sample.get("code") or ""
+            cases.append(
+                {
+                    "case_id": f"benign:{i}",
+                    "code": code,
+                    "is_risky": False,
+                }
+            )
     return cases
 
 
-def run(mode: str, redcode_root: Path, max_cases_per_category: int) -> dict:
-    raw_cases = load_cases(redcode_root, max_cases_per_category=max_cases_per_category)
+def run(
+    mode: str,
+    redcode_root: Path,
+    max_cases_per_category: int,
+    benign_json: Path | None = None,
+) -> dict:
+    raw_cases = load_cases(
+        redcode_root,
+        max_cases_per_category=max_cases_per_category,
+        benign_json=benign_json,
+    )
     scored: list[dict] = []
     for case in raw_cases:
         begin = time.perf_counter()
@@ -72,6 +96,7 @@ def main() -> int:
     parser.add_argument("--mode", choices=["baseline", "manual", "generated"], required=True)
     parser.add_argument("--redcode-root", type=Path, required=True)
     parser.add_argument("--max-cases-per-category", type=int, default=5)
+    parser.add_argument("--benign-json", type=Path, required=False)
     parser.add_argument("--result-json", type=Path, required=True)
     parser.add_argument("--report-md", type=Path, required=True)
     args = parser.parse_args()
@@ -80,6 +105,7 @@ def main() -> int:
         mode=args.mode,
         redcode_root=args.redcode_root,
         max_cases_per_category=args.max_cases_per_category,
+        benign_json=args.benign_json,
     )
     args.result_json.parent.mkdir(parents=True, exist_ok=True)
     args.report_md.parent.mkdir(parents=True, exist_ok=True)

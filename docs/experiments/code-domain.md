@@ -14,6 +14,8 @@
 2. Place RedCode files under `benchmarks/RedCode-Exec/py2text_dataset_json`.
 3. Verify layout:
    - `uv run python scripts/verify_dataset.py --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json`
+   - With benign set:
+     - `uv run python scripts/verify_dataset.py --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json --benign-json ./benchmarks/shell/benign_commands.json`
 
 ## Planned Modes
 - Baseline (no rules)
@@ -31,7 +33,24 @@
 uv run python scripts/run_code_experiment.py \
   --mode manual \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
+  --benign-json ./benchmarks/shell/benign_commands.json \
   --max-cases-per-category 5 \
   --result-json ./artifacts/code_eval/manual_result.json \
   --report-md ./artifacts/code_eval/manual_report.md
+```
+
+## Run Model-in-Loop Shell Experiment
+```bash
+uv run python scripts/run_agent_experiment.py \
+  --shell-kb ./data/uca/shell/shell_kb.json \
+  --risky-json ./benchmarks/shell/risky_commands.json \
+  --benign-json ./benchmarks/shell/benign_commands.json \
+  --result-json ./artifacts/shell_eval/model_in_loop_result.json \
+  --report-md ./artifacts/shell_eval/model_in_loop_report.md
+```
+
+## Docker Sandbox
+```bash
+docker compose -f docker/docker-compose.yml build
+docker compose -f docker/docker-compose.yml run --rm agentspec
 ```

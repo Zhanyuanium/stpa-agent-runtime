@@ -1,13 +1,13 @@
-# AgentSpec (Code Domain Branch)
+# AgentSpec (Code + Shell Branch)
 
-本分支是毕业设计实现分支，目标是围绕开题报告完成 **AgentSpec 代码域闭环**：
+本分支是毕业设计实现分支，目标是围绕开题报告完成 **AgentSpec 代码域 + Shell 域闭环**：
 
 - 离线分析层：`STPA/UCA -> 结构化知识库`
 - 规则生成层：`UCA -> AgentSpec DSL (.spec)`
 - 在线执行层：`运行时拦截、缓存、审计`
-- 实验评估层：`baseline/manual/generated` 三模式评测
+- 实验评估层：`baseline/manual/generated` 与 `model-in-loop` 评测
 
-本分支**不包含 OSWorld，不包含 embodied/AV 方向实现**，以代码域（RedCode-Exec 风险类别）为唯一目标。
+本分支**不包含 OSWorld，不包含 embodied/AV 方向实现**，重点是代码域与 Shell 域安全治理。
 
 ---
 
@@ -18,7 +18,9 @@
 ├─ src/
 │  ├─ agentspec_codegen/
 │  │  ├─ uca/          # UCA 模型、MITRE 映射、读写
+│  │  ├─ shell_parser/ # Shell 命令结构化解析与 shellcheck 封装
 │  │  ├─ compiler/     # UCA -> .spec 编译器
+│  │  ├─ predicates/   # OS 上下文感知检查
 │  │  ├─ runtime/      # 运行时缓存与审计
 │  │  └─ eval/         # 评估指标计算
 │  ├─ controlled_agent_excector.py
@@ -26,14 +28,20 @@
 │  ├─ enforcement.py
 │  └─ rules/manual/
 │     ├─ pythonrepl.py
+│     ├─ shell.py
 │     └─ table.py
-├─ data/uca/code/
-│  └─ sample_kb.json
+├─ data/uca/
+│  ├─ code/sample_kb.json
+│  └─ shell/shell_kb.json
+├─ benchmarks/
+│  ├─ shell/risky_commands.json
+│  └─ shell/benign_commands.json
 ├─ scripts/
 │  ├─ fetch_redcode.ps1
 │  ├─ fetch_redcode.sh
 │  ├─ verify_dataset.py
 │  ├─ run_code_experiment.py
+│  ├─ run_agent_experiment.py
 │  └─ export_paper_tables.py
 ├─ tests/
 │  ├─ unit/
@@ -47,6 +55,10 @@
    ├─ uca-model.md
    ├─ rule-compiler.md
    ├─ runtime-guard.md
+   ├─ shell-runtime.md
+   ├─ stpa-analysis.md
+   ├─ stpa/cua-control-loop.md
+   ├─ semantic-mapping.md
    ├─ experiments/code-domain.md
    ├─ release-checklist.md
    └─ limitations.md
@@ -110,12 +122,13 @@ bash ./scripts/fetch_redcode.sh
 uv run python scripts/verify_dataset.py --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json
 ```
 
-### 3.3 运行代码域实验
+### 3.3 运行代码域实验（heuristic）
 
 ```bash
 uv run python scripts/run_code_experiment.py \
   --mode manual \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
+  --benign-json ./benchmarks/shell/benign_commands.json \
   --max-cases-per-category 5 \
   --result-json ./artifacts/code_eval/manual_result.json \
   --report-md ./artifacts/code_eval/manual_report.md
@@ -133,6 +146,24 @@ uv run python scripts/run_code_experiment.py \
 uv run python scripts/export_paper_tables.py \
   --result-json ./artifacts/code_eval/manual_result.json \
   --output-md ./artifacts/code_eval/table_manual.md
+```
+
+### 3.5 运行 Shell model-in-loop 实验
+
+```bash
+uv run python scripts/run_agent_experiment.py \
+  --shell-kb ./data/uca/shell/shell_kb.json \
+  --risky-json ./benchmarks/shell/risky_commands.json \
+  --benign-json ./benchmarks/shell/benign_commands.json \
+  --result-json ./artifacts/shell_eval/model_in_loop_result.json \
+  --report-md ./artifacts/shell_eval/model_in_loop_report.md
+```
+
+### 3.6 Docker 沙盒复现实验
+
+```bash
+docker compose -f docker/docker-compose.yml build
+docker compose -f docker/docker-compose.yml run --rm agentspec
 ```
 
 ---
@@ -180,7 +211,14 @@ uv run python scripts/verify_dataset.py --redcode-root <path>
   - predicate cache
   - 审计记录（rule/event/action/result/detail）
 
-### 5.4 评估层
+### 5.4 Shell/OS 感知层
+
+- 位置：`src/agentspec_codegen/shell_parser`、`src/agentspec_codegen/predicates`、`src/rules/manual/shell.py`
+- 职责：
+  - 解析 shell 命令并提取风险标志
+  - 路径敏感性、权限变更、网络目标等 OS 上下文判定
+  - 为运行时解释器提供可审计的 shell predicate
+### 5.5 评估层
 
 - 位置：`src/agentspec_codegen/eval`、`scripts/run_code_experiment.py`
 - 职责：
@@ -197,6 +235,10 @@ uv run python scripts/verify_dataset.py --redcode-root <path>
 - UCA：`docs/uca-model.md`
 - 编译器：`docs/rule-compiler.md`
 - 运行时：`docs/runtime-guard.md`
+- Shell 运行时：`docs/shell-runtime.md`
+- STPA：`docs/stpa-analysis.md`
+- 控制环：`docs/stpa/cua-control-loop.md`
+- 语义映射：`docs/semantic-mapping.md`
 - 实验：`docs/experiments/code-domain.md`
 - 发布检查：`docs/release-checklist.md`
 - 已知限制：`docs/limitations.md`
@@ -209,9 +251,9 @@ uv run python scripts/verify_dataset.py --redcode-root <path>
 
 A: 分支遵循“仓库轻量与合规”策略，只提交数据脚本和校验逻辑，不提交大体积基准数据与密钥。
 
-### Q2: 为什么只做代码域？
+### Q2: 为什么没有 OSWorld/AV/embodied？
 
-A: 这是本阶段里程碑，先完成“可测、可复现、可写论文”的代码域闭环，再按计划扩展到其它域。
+A: 当前里程碑聚焦开题要求中的代码+Shell 安全闭环，先保证可测、可复现、可审计，再考虑扩展到其它域。
 
 ### Q3: 如何新增风险类别？
 
