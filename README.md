@@ -162,11 +162,13 @@ uv run python scripts/run_agent_experiment.py \
   --report-md ./artifacts/shell_eval/model_in_loop_report.md
 ```
 
-**可选 LLM 后端**（需配置 `OPENAI_API_KEY`）：
+**可选 LLM 后端（支持自定义端点）**：
 
 ```bash
 uv run python scripts/run_agent_experiment.py \
-  --backend model --provider openai --model gpt-4o-mini \
+  --backend model --model gpt-4o-mini \
+  --api-base-url https://your-provider.example/v1 \
+  --api-key-env OPENAI_API_KEY \
   --risky-json ./benchmarks/shell/risky_commands.json \
   --benign-json ./benchmarks/shell/benign_commands.json \
   --result-json ./artifacts/shell_eval/model_result.json \
@@ -178,8 +180,9 @@ uv run python scripts/run_agent_experiment.py \
 | 参数 | 说明 | 默认 |
 |------|------|------|
 | `--backend` | `heuristic`（规则）或 `model`（LLM） | `heuristic` |
-| `--provider` | LLM 提供商：`openai`、`azure` | `openai` |
 | `--model` | 模型名称 | `gpt-4o-mini` |
+| `--api-base-url` | OpenAI 兼容 API 端点（可选） | 空（官方默认） |
+| `--api-key-env` | API Key 环境变量名 | `OPENAI_API_KEY` |
 | `--shell-kb` | UCA 知识库路径（仅 heuristic） | `data/uca/shell/shell_kb.json` |
 | `--risky-json` | 风险命令用例 JSON | 必填 |
 | `--benign-json` | 良性命令用例 JSON | 可选 |
@@ -309,7 +312,8 @@ A: `shellcheck_wrapper` 会优雅降级，返回 `available=False`、`diagnostic
 
 ### Q5: 使用 `--backend model` 时报错缺少 API 密钥？
 
-A: 需设置 `OPENAI_API_KEY`。示例：`export OPENAI_API_KEY=sk-...`。Azure 使用 `AZURE_OPENAI_API_KEY` 与 `AZURE_OPENAI_DEPLOYMENT`。
+A: 默认读取 `OPENAI_API_KEY`。如果服务商使用不同变量名，可通过 `--api-key-env` 指定，例如：
+`--api-key-env VENDOR_API_KEY`。自定义端点通过 `--api-base-url` 配置（OpenAI 兼容接口）。
 
 ---
 

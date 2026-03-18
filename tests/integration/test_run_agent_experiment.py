@@ -72,6 +72,21 @@ def test_run_model_in_loop_model_backend_no_api_key_raises(tmp_path, monkeypatch
         )
 
 
+def test_run_model_in_loop_model_backend_custom_env_missing_raises(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("VENDOR_API_KEY", raising=False)
+    risky = tmp_path / "risky.json"
+    risky.write_text(json.dumps([{"command": "ls"}]), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        run_model_in_loop(
+            shell_kb_path=Path("data/uca/shell/shell_kb.json"),
+            risky_json=risky,
+            benign_json=None,
+            backend="model",
+            api_key_env="VENDOR_API_KEY",
+            api_base_url="https://vendor.example/v1",
+        )
+
+
 def test_cli_help_contains_backend_options() -> None:
     root = Path(__file__).resolve().parents[2]
     proc = subprocess.run(
@@ -85,5 +100,6 @@ def test_cli_help_contains_backend_options() -> None:
     assert "--backend" in out
     assert "heuristic" in out
     assert "model" in out
-    assert "--provider" in out
     assert "--model" in out
+    assert "--api-base-url" in out
+    assert "--api-key-env" in out
