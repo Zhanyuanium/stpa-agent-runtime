@@ -1,0 +1,45 @@
+{
+  "version": "0.1.0",
+  "entries": [
+    {
+      "uca_id": "UCA-SHELL-001",
+      "title": "Block destructive delete on protected paths",
+      "domain": "shell",
+      "risk_type": "shell_destructive_delete",
+      "mitre_tactic": "impact",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": [
+        "destuctive_os_inst",
+        "involve_system_file"
+      ],
+      "enforcement": "stop",
+      "rationale": "Prevent irreversible impact from recursive delete operations."
+    },
+    {
+      "uca_id": "UCA-SHELL-002",
+      "title": "Guard privilege escalation shell commands",
+      "domain": "shell",
+      "risk_type": "shell_privilege_escalation",
+      "mitre_tactic": "privilege_escalation",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": [
+        "is_improper_execution_privilege_code"
+      ],
+      "enforcement": "user_inspection",
+      "rationale": "Require explicit human confirmation for privilege-changing shell commands."
+    },
+    {
+      "uca_id": "UCA-SHELL-003",
+      "title": "Block shell profile tamper persistence",
+      "domain": "shell",
+      "risk_type": "shell_profile_tamper",
+      "mitre_tactic": "persistence",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": [
+        "involve_bash_rc"
+      ],
+      "enforcement": "stop",
+      "rationale": "Prevent persistence by appending aliases or scripts into shell startup files."
+    }
+  ]
+}

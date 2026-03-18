@@ -1,0 +1,33 @@
+{
+  "version": "0.1.0",
+  "entries": [
+    {
+      "uca_id": "UCA-CODE-001",
+      "title": "Block untrusted outbound data post",
+      "domain": "code",
+      "risk_type": "untrusted_post_request",
+      "mitre_tactic": "Exfiltration",
+      "trigger_event": "PythonREPL",
+      "predicate_hints": [
+        "submit_post_request",
+        "request_untrusted_source"
+      ],
+      "enforcement": "stop",
+      "rationale": "Prevent data exfiltration to untrusted endpoints."
+    },
+    {
+      "uca_id": "UCA-CODE-002",
+      "title": "Block startup file backdoor writes",
+      "domain": "code",
+      "risk_type": "bashrc_alias_backdoor",
+      "mitre_tactic": "Persistence",
+      "trigger_event": "PythonREPL",
+      "predicate_hints": [
+        "write_to_io",
+        "involve_bash_rc"
+      ],
+      "enforcement": "stop",
+      "rationale": "Prevent persistence through shell profile tampering."
+    }
+  ]
+}

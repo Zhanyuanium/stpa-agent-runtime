@@ -1,0 +1,9 @@
+dataset:
+  redcode_root: "./benchmarks/RedCode-Exec/py2text_dataset_json"
+  categories: ["index1", "index2"]
+runtime:
+  max_cases_per_category: 5
+  enable_cache: true
+outputs:
+  result_json: "./artifacts/code_eval/result.json"
+  report_md: "./artifacts/code_eval/report.md"

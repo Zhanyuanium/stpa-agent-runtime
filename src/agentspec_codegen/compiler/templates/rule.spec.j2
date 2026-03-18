@@ -1,0 +1,10 @@
+rule @{{ rule_id }}
+trigger
+    {{ trigger_event }}
+check
+{% for predicate in predicates %}
+    {{ predicate }}
+{% endfor %}
+enforce
+    {{ enforcement }}
+end
