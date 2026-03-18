@@ -22,6 +22,13 @@
 - Baseline (no rules)
 - Manual rules (UCA KB -> compiled `.spec` -> runtime enforcement)
 - Generated rules (LLM-generated UCA KB -> compiled `.spec` -> runtime enforcement)
+- All modes persist staged artifacts for audit:
+  - `01_uca_loaded.json`
+  - `02_compiled_specs/*.spec`
+  - `02_compiled_manifest.json`
+  - `03_rules_parsed.json`
+  - `04_check_traces/{case_id}.json`
+  - `05_case_audits.jsonl`
 
 ## Primary Metrics
 - Risk interception rate (= enforced rate)
@@ -36,7 +43,7 @@ uv run python scripts/run_code_experiment.py \
   --mode manual \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
   --benign-json ./benchmarks/shell/benign_commands.json \
-  --max-cases-per-category 30 \
+  --artifact-root ./artifacts/code_eval/manual \
   --result-json ./artifacts/code_eval/manual_result.json \
   --report-md ./artifacts/code_eval/manual_report.md
 ```
@@ -46,7 +53,7 @@ uv run python scripts/run_code_experiment.py \
   --mode baseline \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
   --benign-json ./benchmarks/shell/benign_commands.json \
-  --max-cases-per-category 30 \
+  --artifact-root ./artifacts/code_eval/baseline \
   --result-json ./artifacts/code_eval/baseline_result.json \
   --report-md ./artifacts/code_eval/baseline_report.md
 ```
@@ -59,14 +66,12 @@ uv run python scripts/export_paper_tables.py \
   --output-category-md ./artifacts/code_eval/manual_table_rq1.md
 ```
 
-## Run RQ2 (Low-Cost Generated Rules)
+## Run RQ2 (Generated Rules)
 
-先生成结构化 UCA 知识库（1:9 split + 限成本）：
+先生成结构化 UCA 知识库（默认全量类别/样本）：
 ```bash
 uv run python scripts/generate_code_rules.py \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
-  --max-categories 5 \
-  --samples-per-category 10 \
   --model gpt-4o-mini \
   --api-base-url https://your-provider.example/v1 \
   --api-key-env OPENAI_API_KEY \
@@ -80,19 +85,20 @@ uv run python scripts/run_code_experiment.py \
   --mode generated \
   --redcode-root ./benchmarks/RedCode-Exec/py2text_dataset_json \
   --generated-code-kb ./artifacts/code_eval/generated_code_kb.json \
-  --max-cases-per-category 10 \
+  --artifact-root ./artifacts/code_eval/generated \
   --result-json ./artifacts/code_eval/generated_result.json \
   --report-md ./artifacts/code_eval/generated_report.md
 ```
 
-## Run Model-in-Loop Shell Experiment
+## Run Strict Spec-Runtime Shell Experiment
 ```bash
 uv run python scripts/run_agent_experiment.py \
   --shell-kb ./data/uca/shell/shell_kb.json \
   --risky-json ./benchmarks/RedCode-Exec/bash2text_dataset_json \
   --benign-json ./benchmarks/shell/benign_commands.json \
-  --result-json ./artifacts/shell_eval/model_in_loop_result.json \
-  --report-md ./artifacts/shell_eval/model_in_loop_report.md
+  --artifact-root ./artifacts/shell_eval/spec_runtime \
+  --result-json ./artifacts/shell_eval/spec_runtime_result.json \
+  --report-md ./artifacts/shell_eval/spec_runtime_report.md
 ```
 
 ## Docker Sandbox

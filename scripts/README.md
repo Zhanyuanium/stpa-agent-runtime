@@ -5,14 +5,17 @@
 - `run_code_experiment.py`: run code-domain baseline/manual/generated experiments.
   - `manual`: executes strict `UCA -> .spec -> RuleInterpreter` pipeline via `--code-kb`.
   - `generated`: executes strict pipeline via `--generated-code-kb`.
-  - `--generated-rules-json` remains as deprecated compatibility input.
+  - defaults to full dataset scale; `--max-cases-per-category` is optional for debug sampling.
+  - writes staged artifacts `01~05` to `--artifact-root` (default `artifacts/code_eval/<mode>`).
 - `run_code_eval_suite.py`: one-command runner for code-domain outputs.
   - produces `baseline/manual/(optional generated)` result + report + table + category table.
   - optional `--include-generated` + `--generated-code-kb`, or `--auto-generate-rules`.
-- `generate_code_rules.py`: generate low-cost structured UCA KB for RQ2-style evaluation.
-  - 1:9 split per category; outputs `generated_code_kb.json` and `split_manifest.json`.
+- `generate_code_rules.py`: generate structured UCA KB for RQ2-style evaluation.
+  - default full categories/samples; optional caps via `--max-categories` / `--samples-per-category`.
+  - still uses 1:9 split within each category; outputs `generated_code_kb.json` and `split_manifest.json`.
   - supports OpenAI-compatible endpoint via `--api-base-url` and API key env via `--api-key-env`.
-- `run_agent_experiment.py`: run model-in-loop shell enforcement experiments.
-  - `--backend heuristic`: deterministic rule-based enforcement (default).
-  - `--backend model`: LLM-based risk judgment; supports custom OpenAI-compatible endpoint via `--api-base-url`, model via `--model`, and key env via `--api-key-env` (default `OPENAI_API_KEY`).
+- `run_agent_experiment.py`: run strict spec-runtime shell enforcement experiments.
+  - single runtime path: `UCA -> .spec -> Rule.from_text -> RuleInterpreter`.
+  - writes staged artifacts `01~05` to `--artifact-root` (default `artifacts/shell_eval/spec_runtime`).
+  - case audits include shellcheck summary + raw diagnostics for traceability.
 - `export_paper_tables.py`: export overview markdown table and optional Table3-like category table from result json.
