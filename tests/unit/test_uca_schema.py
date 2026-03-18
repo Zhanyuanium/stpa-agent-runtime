@@ -21,6 +21,8 @@ def _valid_entry() -> dict:
         "predicate_hints": ["submit_post_request"],
         "enforcement": "stop",
         "rationale": "Avoid outbound leaks.",
+        "hazard_ids": ["H2"],
+        "safety_constraint_ids": ["SC-01"],
     }
 
 
@@ -32,6 +34,20 @@ def test_uca_entry_accepts_valid_mitre_mapping() -> None:
 def test_uca_entry_rejects_invalid_mitre_mapping() -> None:
     payload = _valid_entry()
     payload["mitre_tactic"] = "persistence"
+    with pytest.raises(ValidationError):
+        UcaEntry.model_validate(payload)
+
+
+def test_uca_entry_rejects_invalid_hazard_id() -> None:
+    payload = _valid_entry()
+    payload["hazard_ids"] = ["HAZARD-2"]
+    with pytest.raises(ValidationError):
+        UcaEntry.model_validate(payload)
+
+
+def test_uca_entry_rejects_invalid_sc_id() -> None:
+    payload = _valid_entry()
+    payload["safety_constraint_ids"] = ["SC-1"]
     with pytest.raises(ValidationError):
         UcaEntry.model_validate(payload)
 
@@ -55,6 +71,8 @@ def test_load_shell_uca_kb() -> None:
     kb = load_uca_knowledge_base(kb_path)
     assert kb.entries
     assert kb.entries[0].domain.value == "shell"
+    assert kb.entries[0].hazard_ids
+    assert kb.entries[0].safety_constraint_ids
 
 
 def test_uca_model_dump_roundtrip() -> None:

@@ -81,6 +81,12 @@ class ControlledAgentExecutor(AgentExecutor) :
                 (a.action, a.observation) for a in values if isinstance(a, AgentStep)
             ]
     
+    @staticmethod
+    def _infer_uca_id(rule_id: str) -> str | None:
+        if not rule_id.startswith("uca_"):
+            return None
+        return rule_id.upper().replace("_", "-")
+
     def validate_and_enforce(self, action: Action, state: RuleState): 
         if self.rules==None:
             raise ValueError("rules should not be none")
@@ -96,6 +102,7 @@ class ControlledAgentExecutor(AgentExecutor) :
                         action_name=state.action.name if state.action else "",
                         enforce_result=res.name.lower(),
                         detail=str(interpreter.cond_eval_history),
+                        uca_id=self._infer_uca_id(rule.id),
                         shellcheck_summary=shellcheck_summary,
                     )
                 )

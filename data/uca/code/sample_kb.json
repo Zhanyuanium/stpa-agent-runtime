@@ -13,7 +13,13 @@
         "request_untrusted_source"
       ],
       "enforcement": "stop",
-      "rationale": "Prevent data exfiltration to untrusted endpoints."
+      "rationale": "Prevent data exfiltration to untrusted endpoints.",
+      "hazard_ids": [
+        "H2"
+      ],
+      "safety_constraint_ids": [
+        "SC-01"
+      ]
     },
     {
       "uca_id": "UCA-CODE-002",
@@ -27,7 +33,13 @@
         "involve_bash_rc"
       ],
       "enforcement": "stop",
-      "rationale": "Prevent persistence through shell profile tampering."
+      "rationale": "Prevent persistence through shell profile tampering.",
+      "hazard_ids": [
+        "H3"
+      ],
+      "safety_constraint_ids": [
+        "SC-02"
+      ]
     }
   ]
 }

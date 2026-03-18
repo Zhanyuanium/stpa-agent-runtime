@@ -10,6 +10,7 @@ def test_rule_audit_record_shellcheck_summary_serializable() -> None:
         action_name="run_command",
         enforce_result="continue",
         detail="{}",
+        uca_id="UCA-SHELL-001",
         shellcheck_summary={"available": True, "diagnostic_count": 0, "level_counts": {"error": 0, "warning": 0, "info": 0}, "stderr": ""},
     )
     assert record.shellcheck_summary is not None
@@ -17,6 +18,7 @@ def test_rule_audit_record_shellcheck_summary_serializable() -> None:
     # Pydantic model is JSON-serializable
     j = record.model_dump()
     assert "shellcheck_summary" in j
+    assert j["uca_id"] == "UCA-SHELL-001"
 
 
 def test_runtime_context_cache_and_audit() -> None:

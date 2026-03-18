@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .mitre import normalize_tactic, tactic_supported_for_risk
 
@@ -37,7 +37,35 @@ class UcaEntry(BaseModel):
     predicate_hints: list[str] = Field(default_factory=list)
     enforcement: str = Field(default="stop", min_length=1)
     rationale: str = Field(min_length=5)
+    hazard_ids: list[str] = Field(default_factory=list)
+    safety_constraint_ids: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("hazard_ids", mode="after")
+    @classmethod
+    def _validate_hazard_ids(cls, values: list[str]) -> list[str]:
+        bad = [v for v in values if not (v.startswith("H") and v[1:].isdigit())]
+        if bad:
+            joined = ", ".join(sorted(bad))
+            raise ValueError(f"hazard_ids must look like H1/H2/...; invalid: {joined}")
+        if len(values) != len(set(values)):
+            raise ValueError("hazard_ids must be unique")
+        return values
+
+    @field_validator("safety_constraint_ids", mode="after")
+    @classmethod
+    def _validate_sc_ids(cls, values: list[str]) -> list[str]:
+        bad = [
+            v
+            for v in values
+            if not (v.startswith("SC-") and len(v) == 5 and v[3:].isdigit())
+        ]
+        if bad:
+            joined = ", ".join(sorted(bad))
+            raise ValueError(f"safety_constraint_ids must look like SC-01/SC-02; invalid: {joined}")
+        if len(values) != len(set(values)):
+            raise ValueError("safety_constraint_ids must be unique")
+        return values
 
     @model_validator(mode="after")
     def _validate_mitre_mapping(self) -> "UcaEntry":

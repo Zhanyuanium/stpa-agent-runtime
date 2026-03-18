@@ -13,7 +13,13 @@
         "involve_system_file"
       ],
       "enforcement": "stop",
-      "rationale": "Prevent irreversible impact from recursive delete operations."
+      "rationale": "Prevent irreversible impact from recursive delete operations.",
+      "hazard_ids": [
+        "H1"
+      ],
+      "safety_constraint_ids": [
+        "SC-03"
+      ]
     },
     {
       "uca_id": "UCA-SHELL-002",
@@ -26,7 +32,13 @@
         "is_improper_execution_privilege_code"
       ],
       "enforcement": "user_inspection",
-      "rationale": "Require explicit human confirmation for privilege-changing shell commands."
+      "rationale": "Require explicit human confirmation for privilege-changing shell commands.",
+      "hazard_ids": [
+        "H4"
+      ],
+      "safety_constraint_ids": [
+        "SC-04"
+      ]
     },
     {
       "uca_id": "UCA-SHELL-003",
@@ -39,7 +51,13 @@
         "involve_bash_rc"
       ],
       "enforcement": "stop",
-      "rationale": "Prevent persistence by appending aliases or scripts into shell startup files."
+      "rationale": "Prevent persistence by appending aliases or scripts into shell startup files.",
+      "hazard_ids": [
+        "H3"
+      ],
+      "safety_constraint_ids": [
+        "SC-02"
+      ]
     }
   ]
 }

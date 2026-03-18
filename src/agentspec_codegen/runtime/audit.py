@@ -13,6 +13,7 @@ class RuleAuditRecord(BaseModel):
     action_name: str
     enforce_result: str
     detail: str = ""
+    uca_id: str | None = None
     shellcheck_summary: dict[str, Any] | None = None
 
 
