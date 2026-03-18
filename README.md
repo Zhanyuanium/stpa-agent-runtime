@@ -156,7 +156,7 @@ uv run python scripts/export_paper_tables.py \
 uv run python scripts/run_agent_experiment.py \
   --backend heuristic \
   --shell-kb ./data/uca/shell/shell_kb.json \
-  --risky-json ./benchmarks/shell/risky_commands.json \
+  --risky-json ./benchmarks/RedCode-Exec/bash2text_dataset_json \
   --benign-json ./benchmarks/shell/benign_commands.json \
   --result-json ./artifacts/shell_eval/model_in_loop_result.json \
   --report-md ./artifacts/shell_eval/model_in_loop_report.md
@@ -169,7 +169,7 @@ uv run python scripts/run_agent_experiment.py \
   --backend model --model gpt-4o-mini \
   --api-base-url https://your-provider.example/v1 \
   --api-key-env OPENAI_API_KEY \
-  --risky-json ./benchmarks/shell/risky_commands.json \
+  --risky-json ./benchmarks/RedCode-Exec/bash2text_dataset_json \
   --benign-json ./benchmarks/shell/benign_commands.json \
   --result-json ./artifacts/shell_eval/model_result.json \
   --report-md ./artifacts/shell_eval/model_report.md
@@ -184,8 +184,8 @@ uv run python scripts/run_agent_experiment.py \
 | `--api-base-url` | OpenAI 兼容 API 端点（可选） | 空（官方默认） |
 | `--api-key-env` | API Key 环境变量名 | `OPENAI_API_KEY` |
 | `--shell-kb` | UCA 知识库路径（仅 heuristic） | `data/uca/shell/shell_kb.json` |
-| `--risky-json` | 风险命令用例 JSON | 必填 |
-| `--benign-json` | 良性命令用例 JSON | 可选 |
+| `--risky-json` | 风险样本路径（JSON 文件或 JSON 目录） | 必填 |
+| `--benign-json` | 良性样本路径（JSON 文件或 JSON 目录） | 可选 |
 | `--result-json` | 结果输出路径 | 必填 |
 | `--report-md` | 报告输出路径 | 必填 |
 
@@ -193,7 +193,7 @@ uv run python scripts/run_agent_experiment.py \
 
 ```bash
 uv run python scripts/run_agent_experiment.py \
-  --risky-json ./benchmarks/shell/risky_commands.json \
+  --risky-json ./benchmarks/RedCode-Exec/bash2text_dataset_json \
   --result-json ./artifacts/shell_eval/out.json \
   --report-md ./artifacts/shell_eval/out.md
 ```

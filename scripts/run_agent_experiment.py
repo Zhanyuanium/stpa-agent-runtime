@@ -7,7 +7,7 @@ Supports two backends:
 Usage:
   uv run python scripts/run_agent_experiment.py \\
     --backend heuristic \\
-    --risky-json ./benchmarks/shell/risky_commands.json \\
+    --risky-json ./benchmarks/RedCode-Exec/bash2text_dataset_json \\
     --benign-json ./benchmarks/shell/benign_commands.json \\
     --result-json ./artifacts/shell_eval/result.json \\
     --report-md ./artifacts/shell_eval/report.md
@@ -103,19 +103,67 @@ def _enforce_model(
     return blocked, elapsed_ms
 
 
+def _load_case_items(path: Path) -> list[tuple[str, dict]]:
+    """
+    Load case objects from a json file or a directory of json files.
+    Returns tuples of (source_tag, case_obj).
+    """
+    if path.is_dir():
+        items: list[tuple[str, dict]] = []
+        for file in sorted(path.glob("*.json")):
+            data = json.loads(file.read_text(encoding="utf-8"))
+            if not isinstance(data, list):
+                continue
+            for obj in data:
+                if isinstance(obj, dict):
+                    items.append((file.stem, obj))
+        return items
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        return []
+    return [(path.stem, obj) for obj in data if isinstance(obj, dict)]
+
+
+def _extract_command(item: dict) -> str:
+    return (
+        item.get("command")
+        or item.get("Code")
+        or item.get("code")
+        or item.get("Bash")
+        or ""
+    )
+
+
 def _load_eval_cases(risky_json: Path, benign_json: Path | None) -> list[dict]:
-    risky = json.loads(risky_json.read_text(encoding="utf-8"))
+    risky_items = _load_case_items(risky_json)
     cases: list[dict] = []
-    for idx, item in enumerate(risky):
-        command = item.get("command") or item.get("Code") or item.get("code") or ""
+    for idx, (source, item) in enumerate(risky_items):
+        command = _extract_command(item)
         event = item.get("event", "TerminalExecute")
-        cases.append({"case_id": f"risky:{idx}", "event": event, "input": command, "is_risky": True})
+        sample_id = item.get("Index", idx)
+        cases.append(
+            {
+                "case_id": f"risky:{source}:{sample_id}",
+                "event": event,
+                "input": command,
+                "is_risky": True,
+            }
+        )
     if benign_json and benign_json.exists():
-        benign = json.loads(benign_json.read_text(encoding="utf-8"))
-        for idx, item in enumerate(benign):
-            command = item.get("command") or item.get("Code") or item.get("code") or ""
+        benign_items = _load_case_items(benign_json)
+        for idx, (source, item) in enumerate(benign_items):
+            command = _extract_command(item)
             event = item.get("event", "TerminalExecute")
-            cases.append({"case_id": f"benign:{idx}", "event": event, "input": command, "is_risky": False})
+            sample_id = item.get("Index", idx)
+            cases.append(
+                {
+                    "case_id": f"benign:{source}:{sample_id}",
+                    "event": event,
+                    "input": command,
+                    "is_risky": False,
+                }
+            )
     return cases
 
 
@@ -194,8 +242,18 @@ def main() -> int:
     )
     parser.add_argument("--shell-kb", type=Path, default=Path("data/uca/shell/shell_kb.json"),
                        help="UCA knowledge base (heuristic backend only)")
-    parser.add_argument("--risky-json", type=Path, required=True)
-    parser.add_argument("--benign-json", type=Path, required=False)
+    parser.add_argument(
+        "--risky-json",
+        type=Path,
+        required=True,
+        help="Risky dataset path: json file or directory of json files (e.g. bash2text_dataset_json)",
+    )
+    parser.add_argument(
+        "--benign-json",
+        type=Path,
+        required=False,
+        help="Optional benign dataset path: json file or directory of json files",
+    )
     parser.add_argument("--result-json", type=Path, required=True)
     parser.add_argument("--report-md", type=Path, required=True)
     args = parser.parse_args()
