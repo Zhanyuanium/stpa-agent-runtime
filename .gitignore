@@ -12,4 +12,9 @@ uv.lock
 /.cursor/
 
 /benchmarks/RedCode-Exec/
+/benchmarks/MBPP/
+/benchmarks/ShellBench/
+/benchmarks/AgentHarm/
 /artifacts/
+
+/reports/
