@@ -52,11 +52,31 @@ def _delta(gate: dict, post: dict) -> tuple[float, float]:
     )
 
 
+def _render_ablation_summary(path: Path | None) -> list[str]:
+    if path is None or not path.exists():
+        return []
+    payload = _load(path)
+    best = payload.get("best_under_budget")
+    if not best:
+        return []
+    lines = [
+        "## 预算内消融最优配置",
+        "",
+        f"- 最优配置：`{best.get('name')}`",
+        f"- 最优后验 TPR：`{best.get('post_tpr'):.4f}`",
+        f"- 最优后验 FPR：`{best.get('post_fpr'):.4f}`",
+        f"- FPR 预算上限：`{payload.get('fpr_budget_absolute'):.4f}`",
+        "",
+    ]
+    return lines
+
+
 def export_report(
     *,
     baseline_dir: Path,
     unified_summary_json: Path,
     output_md: Path,
+    ablation_summary_json: Path | None = None,
 ) -> Path:
     baseline = _load(baseline_dir / "baseline_result.json")
     manual = _load(baseline_dir / "manual_result.json")
@@ -115,6 +135,7 @@ def export_report(
             _render_cluster_table("失败案例簇（current/full）", current_full),
         ]
     )
+    lines.extend(_render_ablation_summary(ablation_summary_json))
     lines.extend(
         [
         "## 参考依据",
@@ -133,11 +154,13 @@ def main() -> int:
     parser.add_argument("--baseline-dir", type=Path, required=True)
     parser.add_argument("--unified-summary-json", type=Path, required=True)
     parser.add_argument("--output-md", type=Path, required=True)
+    parser.add_argument("--ablation-summary-json", type=Path, required=False, default=None)
     args = parser.parse_args()
     out = export_report(
         baseline_dir=args.baseline_dir,
         unified_summary_json=args.unified_summary_json,
         output_md=args.output_md,
+        ablation_summary_json=args.ablation_summary_json,
     )
     print(f"owner_harm_report_md={out}")
     return 0

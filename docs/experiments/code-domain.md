@@ -190,5 +190,24 @@ uv run python scripts/run_owner_harm_eval.py \
   --output-dir ./artifacts/owner_harm_eval/dual_bench \
   --run-agentharm \
   --agentharm-root ./benchmarks/AgentHarm \
-  --code-kb ./data/uca/code/sample_kb.json
+  --code-kb ./data/uca/code/sample_kb.json \
+  --verifier-profile tightened
+```
+
+### 5) 运行 TPR 预算内消融（A/B/C/D）
+```bash
+uv run python scripts/run_tpr_budgeted_ablations.py \
+  --code-gate-result-json ./artifacts/current_eval/code/manual_result.json \
+  --agentharm-root ./benchmarks/AgentHarm \
+  --code-kb ./data/uca/code/sample_kb.json \
+  --output-dir ./artifacts/owner_harm_eval/tpr_ablations
+```
+
+### 6) 导出报告（含消融最优配置）
+```bash
+uv run python scripts/export_owner_harm_report.py \
+  --baseline-dir ./artifacts/current_eval/code \
+  --unified-summary-json ./artifacts/owner_harm_eval/dual_bench/owner_harm_eval_summary.json \
+  --ablation-summary-json ./artifacts/owner_harm_eval/tpr_ablations/ablation_matrix_summary.json \
+  --output-md ./reports/owner-harm-integration-report.md
 ```

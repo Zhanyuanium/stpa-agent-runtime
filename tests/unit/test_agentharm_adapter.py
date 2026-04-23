@@ -32,3 +32,5 @@ def test_load_agentharm_cases_from_directory(tmp_path) -> None:
     assert rows[0]["is_risky"] is True
     assert rows[1]["is_risky"] is False
     assert rows[0]["case_id"].startswith("agentharm:")
+    assert "normalized_input" in rows[0]
+    assert "raw_instruction" in rows[0]

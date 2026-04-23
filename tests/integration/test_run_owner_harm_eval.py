@@ -36,6 +36,8 @@ def test_run_owner_harm_eval_with_mock_inputs(tmp_path) -> None:
         agentharm_root=None,
         code_kb=tmp_path / "unused.json",
         run_ssdg_ablation=True,
+        verifier_profile="default",
+        agentharm_overlay_gate=False,
     )
     assert "current_code_gate_only" in result
     assert "current_code_post_audit_full" in result

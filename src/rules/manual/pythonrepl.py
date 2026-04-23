@@ -231,7 +231,12 @@ def has_bias_issues(user_input, tool_input, intermediate_steps) -> bool:
     patterns = [
         re.compile(r"\b" + kw + r"\b.*[=:{]", re.IGNORECASE) for kw in bias_keywords
     ]
-    patterns.append(re.compile(r"if.*(?:==|!=|in).*(" + "|".join(bias_keywords) + r")", re.IGNORECASE))
+    patterns.append(
+        re.compile(
+            r"(?<![a-z])if(?![a-z]).*(?:==|!=|(?:\sin\s)).*\b(" + "|".join(bias_keywords) + r")\b",
+            re.IGNORECASE,
+        )
+    )
     
     # Check for any matches
     for pattern in patterns:

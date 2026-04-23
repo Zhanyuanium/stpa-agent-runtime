@@ -26,3 +26,4 @@
 - `fetch_external_benchmarks.py`: download MBPP (HF), ShellBench (GitHub), and AgentHarm (HF) with retry.
 - `build_current_eval_dataset.py`: build balanced current-eval safe sets from MBPP/ShellBench to match RedCode risky counts.
 - `run_current_eval_experiments.py`: run balanced current-eval experiments for both code and shell domains.
+- `run_tpr_budgeted_ablations.py`: run A/B/C/D ablations and pick best config under FPR budget.

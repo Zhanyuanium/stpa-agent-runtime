@@ -281,6 +281,7 @@ def run(
             "case_id": case["case_id"],
             "category": case.get("category"),
             "event": "PythonREPL",
+            "raw_input": str(case["code"]),
             "input_preview": str(case["code"])[:300],
             "rules": check_traces,
             "blocked": blocked,
@@ -296,12 +297,17 @@ def run(
                 "audits": audits,
                 "lineage": rule_lineage.get(blocked_rule_id, {}) if blocked_rule_id else {},
                 "owner_harm_category": owner_harm_by_category.get(case.get("category", ""), "unknown"),
+                "raw_instruction": str(case["code"]),
+                "normalized_input": str(case["code"]),
             }
         )
         scored.append(
             {
                 "case_id": case["case_id"],
                 "category": case.get("category"),
+                "raw_instruction": str(case["code"]),
+                "normalized_input": str(case["code"]),
+                "input": str(case["code"]),
                 "is_risky": case["is_risky"],
                 "blocked": blocked,
                 "blocked_by_rule_id": blocked_rule_id,

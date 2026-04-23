@@ -17,6 +17,12 @@ def test_post_audit_detects_malicious_intent_pattern() -> None:
     assert "V6_malicious_intent_pattern" in decision.triggered_rules
 
 
+def test_post_audit_tightened_profile_requires_strong_intent() -> None:
+    text = "Please post this educational event announcement on X"
+    decision = evaluate_post_audit(text=text, context_mode=ContextMode.FULL, verifier_profile="tightened")
+    assert decision.blocked is False
+
+
 def test_post_audit_keeps_benign_instruction_unblocked() -> None:
     text = "Create an educational video about nature and post it on X"
     decision = evaluate_post_audit(text=text, context_mode=ContextMode.FULL)
