@@ -5,9 +5,15 @@ import json
 import time
 from pathlib import Path
 
-from agentspec_codegen.eval import evaluate_cases, evaluate_cases_by_category, summarize_to_markdown
+from agentspec_codegen.eval import (
+    evaluate_cases,
+    evaluate_cases_by_category,
+    evaluate_cases_by_field,
+    summarize_to_markdown,
+)
 from agentspec_codegen.compiler.rule_compiler import CompilationArtifact, compile_knowledge_base, write_compiled_rules
 from agentspec_codegen.uca.models import UcaKnowledgeBase
+from agentspec_codegen.uca.owner_harm import map_owner_harm_category
 from agentspec_codegen.uca.storage import load_uca_knowledge_base
 from agent import Action
 from enforcement import EnforceResult
@@ -37,6 +43,40 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text(content + ("\n" if content else ""), encoding="utf-8")
 
 
+def _build_rule_lineage(kb_obj: UcaKnowledgeBase) -> dict[str, dict]:
+    lineage: dict[str, dict] = {}
+    for entry in kb_obj.entries:
+        rule_id = entry.uca_id.lower().replace("-", "_")
+        lineage[rule_id] = {
+            "uca_id": entry.uca_id,
+            "category": entry.metadata.get("category"),
+            "risk_type": entry.risk_type.value,
+            "mitre_tactic": entry.mitre_tactic,
+            "llm_enforcement_suggestion": entry.metadata.get("llm_enforcement_suggestion"),
+            "final_enforcement": entry.metadata.get("final_enforcement", entry.enforcement),
+            "decision_reason": entry.metadata.get("decision_reason"),
+            "decision_conflict": bool(entry.metadata.get("decision_conflict", False)),
+            "benign_predicate_hints": entry.metadata.get("benign_predicate_hints"),
+            "owner_harm_category": entry.owner_harm_category,
+        }
+    return lineage
+
+
+def _build_owner_harm_by_category(kb_obj: UcaKnowledgeBase) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for entry in kb_obj.entries:
+        category = entry.metadata.get("category")
+        if not category:
+            continue
+        owner_harm = map_owner_harm_category(
+            risk_type=entry.risk_type.value,
+            explicit=entry.owner_harm_category or entry.metadata.get("owner_harm_category"),
+        )
+        if owner_harm is not None:
+            mapping[str(category)] = owner_harm.value
+    return mapping
+
+
 def load_rules_from_uca(
     *,
     kb_path: Path | None = None,
@@ -57,6 +97,7 @@ def load_rules_from_uca(
 def enforce_code_once(
     code: str,
     rules: list[Rule],
+    rule_lineage: dict[str, dict],
     *,
     event: str = "PythonREPL",
 ) -> tuple[bool, float, str | None, list[dict], list[dict]]:
@@ -70,6 +111,7 @@ def enforce_code_once(
     for rule in rules:
         triggered = rule.triggered(action.name, str(action.input))
         if not triggered:
+            lineage = rule_lineage.get(rule.id, {})
             traces.append(
                 {
                     "rule_id": rule.id,
@@ -77,17 +119,20 @@ def enforce_code_once(
                     "triggered": False,
                     "check_history": {},
                     "enforce_result": "not_triggered",
+                    "lineage": lineage,
                 }
             )
             continue
         interpreter = RuleInterpreter(rule, state)
         res, _next_action = interpreter.verify_and_enforce(action)
+        lineage = rule_lineage.get(rule.id, {})
         trace = {
             "rule_id": rule.id,
             "event": rule.event,
             "triggered": True,
             "check_history": interpreter.cond_eval_history,
             "enforce_result": res.name.lower(),
+            "lineage": lineage,
         }
         traces.append(trace)
         audits.append(
@@ -96,6 +141,7 @@ def enforce_code_once(
                 "event": rule.event,
                 "enforce_result": res.name.lower(),
                 "check_history": interpreter.cond_eval_history,
+                "lineage": lineage,
             }
         )
         if res in (EnforceResult.SKIP, EnforceResult.STOP):
@@ -180,6 +226,8 @@ def run(
         runtime_source = "spec_enforcement"
         rule_source = str(generated_code_kb)
         compiled_rule_count = len(artifacts)
+    rule_lineage = _build_rule_lineage(loaded_kb) if loaded_kb is not None else {}
+    owner_harm_by_category = _build_owner_harm_by_category(loaded_kb) if loaded_kb is not None else {}
 
     # Stage outputs: 01~03 are run-level artifacts.
     if runtime_source == "spec_enforcement" and loaded_kb is not None:
@@ -227,7 +275,7 @@ def run(
             elapsed_ms = (time.perf_counter() - begin) * 1000
         else:
             blocked, elapsed_ms, blocked_rule_id, check_traces, audits = enforce_code_once(
-                case["code"], rules, event="PythonREPL"
+                case["code"], rules, rule_lineage, event="PythonREPL"
             )
         trace_payload = {
             "case_id": case["case_id"],
@@ -246,6 +294,8 @@ def run(
                 "blocked": blocked,
                 "blocked_by_rule_id": blocked_rule_id,
                 "audits": audits,
+                "lineage": rule_lineage.get(blocked_rule_id, {}) if blocked_rule_id else {},
+                "owner_harm_category": owner_harm_by_category.get(case.get("category", ""), "unknown"),
             }
         )
         scored.append(
@@ -257,11 +307,13 @@ def run(
                 "blocked_by_rule_id": blocked_rule_id,
                 "fulfilled": not blocked,
                 "overhead_ms": round(elapsed_ms, 6),
+                "owner_harm_category": owner_harm_by_category.get(case.get("category", ""), "unknown"),
             }
         )
     _write_jsonl(stage_root / "05_case_audits.jsonl", case_audits)
     metrics = evaluate_cases(scored)
     by_category = [m.to_dict() for m in evaluate_cases_by_category(scored)]
+    by_owner_harm = [m.to_dict() for m in evaluate_cases_by_field(scored, "owner_harm_category")]
     return {
         "mode": mode,
         "runtime_source": runtime_source,
@@ -270,6 +322,8 @@ def run(
         "artifact_root": str(stage_root),
         "metrics": metrics.to_dict(),
         "metrics_by_category": by_category,
+        "metrics_by_owner_harm": by_owner_harm,
+        "enforcement_conflict_count": sum(1 for v in rule_lineage.values() if v.get("decision_conflict")),
         "cases": scored,
     }
 

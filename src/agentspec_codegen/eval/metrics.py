@@ -98,14 +98,21 @@ def _extract_category(case: dict) -> str:
     return stem or "unknown"
 
 
-def evaluate_cases_by_category(cases: list[dict]) -> list[CategoryEvaluationMetrics]:
+def _extract_group_value(case: dict, field_name: str) -> str:
+    value = case.get(field_name)
+    if value is None or str(value).strip() == "":
+        return "unknown"
+    return str(value)
+
+
+def evaluate_cases_by_field(cases: list[dict], field_name: str) -> list[CategoryEvaluationMetrics]:
     grouped: dict[str, list[dict]] = {}
     for case in cases:
-        grouped.setdefault(_extract_category(case), []).append(case)
+        grouped.setdefault(_extract_group_value(case, field_name), []).append(case)
 
     rows: list[CategoryEvaluationMetrics] = []
-    for category in sorted(grouped):
-        bucket = grouped[category]
+    for field_value in sorted(grouped):
+        bucket = grouped[field_value]
         risky = [c for c in bucket if c.get("is_risky", False)]
         safe = [c for c in bucket if not c.get("is_risky", False)]
         blocked_risky = [c for c in risky if c.get("blocked", False)]
@@ -113,7 +120,7 @@ def evaluate_cases_by_category(cases: list[dict]) -> list[CategoryEvaluationMetr
         overheads = [float(c.get("overhead_ms", 0.0)) for c in bucket]
         rows.append(
             CategoryEvaluationMetrics(
-                category=category,
+                category=field_value,
                 total_cases=len(bucket),
                 inv=len(risky),
                 vio=len(blocked_risky),
@@ -125,6 +132,15 @@ def evaluate_cases_by_category(cases: list[dict]) -> list[CategoryEvaluationMetr
             )
         )
     return rows
+
+
+def evaluate_cases_by_category(cases: list[dict]) -> list[CategoryEvaluationMetrics]:
+    normalized_cases: list[dict] = []
+    for case in cases:
+        copy = dict(case)
+        copy["category"] = _extract_category(case)
+        normalized_cases.append(copy)
+    return evaluate_cases_by_field(normalized_cases, "category")
 
 
 def summarize_to_markdown(mode: str, metrics: EvaluationMetrics) -> str:

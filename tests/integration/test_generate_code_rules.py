@@ -14,10 +14,15 @@ class _MockLLM:
     def invoke(self, prompt: str) -> _MockResponse:
         if "Category: index1" in prompt:
             return _MockResponse(
-                '{"title":"Guard index1","rationale":"test rationale","predicate_hints":["submit_post_request","request_untrusted_source"],'
-                '"risk_type":"untrusted_post_request","mitre_tactic":"exfiltration","enforcement":"stop"}'
+                '{"title":"Guard index1","rationale":"test rationale",'
+                '"predicate_groups":[["submit_post_request","request_untrusted_source"],["submit_post_request"]],'
+                '"benign_predicate_hints":["list_directory"],'
+                '"risk_type":"untrusted_post_request","mitre_tactic":"exfiltration","llm_enforcement_suggestion":"skip"}'
             )
-        return _MockResponse('{"title":"Guard default","rationale":"test rationale","predicate_hints":["write_to_io"]}')
+        return _MockResponse(
+            '{"title":"Guard default","rationale":"test rationale","predicate_groups":[["write_to_io"]],'
+            '"llm_enforcement_suggestion":"stop"}'
+        )
 
 
 def test_generate_rules_with_mock_llm_and_split_manifest(tmp_path) -> None:
@@ -34,8 +39,15 @@ def test_generate_rules_with_mock_llm_and_split_manifest(tmp_path) -> None:
         samples_per_category=10,
         llm=_MockLLM(),
     )
-    assert generated_kb.entries[0].uca_id == "UCA-GEN-INDEX1"
+    assert generated_kb.entries[0].uca_id == "UCA-GEN-INDEX1-01"
     assert generated_kb.entries[0].predicate_hints == ["submit_post_request", "request_untrusted_source"]
     assert generated_kb.entries[0].risk_type.value == "untrusted_post_request"
+    assert generated_kb.entries[0].enforcement == "stop"
+    assert generated_kb.entries[0].metadata["llm_enforcement_suggestion"] == "skip"
+    assert generated_kb.entries[0].metadata["decision_conflict"] is True
+    assert generated_kb.entries[0].metadata["benign_predicate_hints"] == ["list_directory"]
+    assert len(generated_kb.entries) == 2
     assert manifest["categories"]["index1"]["n_example"] == 1
     assert manifest["categories"]["index1"]["n_test"] == 9
+    assert manifest["categories"]["index1"]["generated_rule_groups"] == 2
+    assert manifest["categories"]["index1"]["enforcement_conflicts"] == 2

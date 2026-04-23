@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .mitre import normalize_tactic, tactic_supported_for_risk
+from .owner_harm import map_owner_harm_category
 
 
 class UcaRiskType(str, Enum):
@@ -40,6 +41,7 @@ class UcaEntry(BaseModel):
     hazard_ids: list[str] = Field(default_factory=list)
     safety_constraint_ids: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    owner_harm_category: str | None = None
 
     @field_validator("hazard_ids", mode="after")
     @classmethod
@@ -75,6 +77,12 @@ class UcaEntry(BaseModel):
                 f"risk_type '{self.risk_type.value}' is not mapped to tactic '{self.mitre_tactic}'"
             )
         self.mitre_tactic = tactic
+        mapped = map_owner_harm_category(
+            risk_type=self.risk_type.value,
+            explicit=self.owner_harm_category or self.metadata.get("owner_harm_category"),
+        )
+        if mapped is not None:
+            self.owner_harm_category = mapped.value
         return self
 
 

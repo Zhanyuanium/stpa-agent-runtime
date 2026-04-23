@@ -10,11 +10,11 @@ from agentspec_codegen.eval import evaluate_cases, summarize_to_markdown
 # 1) `uv run python scripts/run_code_eval_suite.py ...`
 # 2) `uv run python -m scripts.run_code_eval_suite ...`
 try:
-    from scripts.export_paper_tables import render_category_table, render_markdown_table
+    from scripts.export_paper_tables import render_category_table, render_markdown_table, render_owner_harm_table
     from scripts.generate_code_rules import generate_rules
     from scripts.run_code_experiment import run
 except ModuleNotFoundError:
-    from export_paper_tables import render_category_table, render_markdown_table
+    from export_paper_tables import render_category_table, render_markdown_table, render_owner_harm_table
     from generate_code_rules import generate_rules
     from run_code_experiment import run
 
@@ -25,6 +25,7 @@ def _write_mode_outputs(result: dict, output_dir: Path, mode: str) -> None:
     report_md = output_dir / f"{mode}_report.md"
     table_md = output_dir / f"{mode}_table.md"
     table_category_md = output_dir / f"{mode}_table_rq1.md"
+    table_owner_harm_md = output_dir / f"{mode}_table_owner_harm.md"
 
     result_json.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     report_md.write_text(summarize_to_markdown(mode, evaluate_cases(result["cases"])), encoding="utf-8")
@@ -32,6 +33,9 @@ def _write_mode_outputs(result: dict, output_dir: Path, mode: str) -> None:
     category_table = render_category_table(result)
     if category_table:
         table_category_md.write_text(category_table, encoding="utf-8")
+    owner_harm_table = render_owner_harm_table(result)
+    if owner_harm_table:
+        table_owner_harm_md.write_text(owner_harm_table, encoding="utf-8")
 
 
 def run_suite(

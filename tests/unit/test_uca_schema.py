@@ -29,6 +29,21 @@ def _valid_entry() -> dict:
 def test_uca_entry_accepts_valid_mitre_mapping() -> None:
     item = UcaEntry.model_validate(_valid_entry())
     assert item.mitre_tactic == "exfiltration"
+    assert item.owner_harm_category == "exfiltration_via_tools"
+
+
+def test_uca_entry_accepts_explicit_owner_harm_category() -> None:
+    payload = _valid_entry()
+    payload["owner_harm_category"] = "privacy_exposure"
+    item = UcaEntry.model_validate(payload)
+    assert item.owner_harm_category == "privacy_exposure"
+
+
+def test_uca_entry_rejects_invalid_owner_harm_category() -> None:
+    payload = _valid_entry()
+    payload["owner_harm_category"] = "invalid_owner_harm"
+    with pytest.raises(ValidationError):
+        UcaEntry.model_validate(payload)
 
 
 def test_uca_entry_rejects_invalid_mitre_mapping() -> None:
@@ -62,8 +77,11 @@ def test_uca_kb_rejects_duplicate_ids() -> None:
 def test_load_sample_uca_kb() -> None:
     kb_path = Path(__file__).resolve().parents[2] / "data" / "uca" / "code" / "sample_kb.json"
     kb = load_uca_knowledge_base(kb_path)
-    assert kb.version == "0.1.0"
-    assert len(kb.entries) >= 2
+    assert kb.version == "0.2.0"
+    assert len(kb.entries) >= 25
+    categories = {entry.metadata.get("category") for entry in kb.entries}
+    assert all(cat is not None for cat in categories)
+    assert len(categories) >= 25
 
 
 def test_load_shell_uca_kb() -> None:
