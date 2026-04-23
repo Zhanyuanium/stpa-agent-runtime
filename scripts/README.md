@@ -3,8 +3,8 @@
 - `fetch_redcode.ps1` / `fetch_redcode.sh`: fetch benchmark data (not committed).
 - `verify_dataset.py`: validate risky and optional benign datasets.
 - `run_code_experiment.py`: run code-domain baseline/manual/generated experiments.
-  - `manual`: executes strict `UCA -> .spec -> RuleInterpreter` pipeline via `--code-kb`.
-  - `generated`: executes strict pipeline via `--generated-code-kb`.
+  - `manual`: executes strict `UCA -> .spec -> RuleInterpreter` pipeline via `--code-kb` (default KB covers RedCode categories).
+  - `generated`: executes strict pipeline via `--generated-code-kb` and reports enforcement decision lineage.
   - defaults to full dataset scale; `--max-cases-per-category` is optional for debug sampling.
   - writes staged artifacts `01~05` to `--artifact-root` (default `artifacts/code_eval/<mode>`).
 - `run_code_eval_suite.py`: one-command runner for code-domain outputs.
@@ -13,9 +13,16 @@
 - `generate_code_rules.py`: generate structured UCA KB for RQ2-style evaluation.
   - default full categories/samples; optional caps via `--max-categories` / `--samples-per-category`.
   - still uses 1:9 split within each category; outputs `generated_code_kb.json` and `split_manifest.json`.
+  - supports multi-predicate groups and dual-track enforcement (`llm_enforcement_suggestion` vs deterministic final decision) with conflict accounting.
   - supports OpenAI-compatible endpoint via `--api-base-url` and API key env via `--api-key-env`.
 - `run_agent_experiment.py`: run strict spec-runtime shell enforcement experiments.
   - single runtime path: `UCA -> .spec -> Rule.from_text -> RuleInterpreter`.
   - writes staged artifacts `01~05` to `--artifact-root` (default `artifacts/shell_eval/spec_runtime`).
   - case audits include shellcheck summary + raw diagnostics for traceability.
 - `export_paper_tables.py`: export overview markdown table and optional Table3-like category table from result json.
+- `run_post_audit_verifier.py`: apply deterministic post-audit verifier to gate-only result json and export combined result/report.
+- `run_owner_harm_eval.py`: unified owner-harm evaluation entrypoint for current dataset and optional AgentHarm adapter; supports SSDG ablation (`full/stripped/structured_goal`).
+- `export_owner_harm_report.py`: merge baseline + ablation outputs into a paper-ready markdown report (including estimated metrics table).
+- `fetch_external_benchmarks.py`: download MBPP (HF), ShellBench (GitHub), and AgentHarm (HF) with retry.
+- `build_current_eval_dataset.py`: build balanced current-eval safe sets from MBPP/ShellBench to match RedCode risky counts.
+- `run_current_eval_experiments.py`: run balanced current-eval experiments for both code and shell domains.
