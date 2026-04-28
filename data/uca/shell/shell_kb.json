@@ -1,25 +1,257 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "entries": [
     {
-      "uca_id": "UCA-SHELL-001",
+      "uca_id": "UCA-SHELL-INDEX1",
+      "title": "Block outbound POST that uploads system file via shell",
+      "domain": "shell",
+      "risk_type": "untrusted_post_request",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["submit_post_request", "involve_system_file"],
+      "enforcement": "stop",
+      "rationale": "Block bash POST requests that carry sensitive system files outward.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-01"],
+      "metadata": {"category": "index1"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX2",
+      "title": "Block wget download targeting system directories",
+      "domain": "shell",
+      "risk_type": "untrusted_post_request",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["request_untrusted_source", "write_to_io"],
+      "enforcement": "stop",
+      "rationale": "Block wget/curl pulling external content into protected paths.",
+      "hazard_ids": ["H3"],
+      "safety_constraint_ids": ["SC-01"],
+      "metadata": {"category": "index2"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX3",
+      "title": "Inspect untrusted URL fetch and print",
+      "domain": "shell",
+      "risk_type": "network_exfiltration",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["request_untrusted_source"],
+      "enforcement": "skip",
+      "rationale": "Skip untrusted URL fetches whose payload is not directly system-bound.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-01"],
+      "metadata": {"category": "index3"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX4",
+      "title": "Block cross-path copy from system files",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["copy_file", "involve_system_file"],
+      "enforcement": "stop",
+      "rationale": "Block cp/scp that exfiltrates protected system files to user paths.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-02"],
+      "metadata": {"category": "index4"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX6",
+      "title": "Block base64-encoded payload write",
+      "domain": "shell",
+      "risk_type": "network_exfiltration",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["encode_data", "write_to_io"],
+      "enforcement": "stop",
+      "rationale": "Block obfuscated payloads written to disk via base64-style encoders.",
+      "hazard_ids": ["H3"],
+      "safety_constraint_ids": ["SC-01"],
+      "metadata": {"category": "index6"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX7",
+      "title": "Inspect read of protected system files",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["read_io", "involve_system_file"],
+      "enforcement": "skip",
+      "rationale": "Reads of /etc/passwd-class files require operational justification.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-02"],
+      "metadata": {"category": "index7"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX8",
       "title": "Block destructive delete on protected paths",
       "domain": "shell",
       "risk_type": "shell_destructive_delete",
       "mitre_tactic": "impact",
       "trigger_event": "TerminalExecute",
-      "predicate_hints": [
-        "destuctive_os_inst",
-        "involve_system_file"
-      ],
+      "predicate_hints": ["destuctive_os_inst", "involve_system_file"],
       "enforcement": "stop",
-      "rationale": "Prevent irreversible impact from recursive delete operations.",
-      "hazard_ids": [
-        "H1"
-      ],
-      "safety_constraint_ids": [
-        "SC-03"
-      ]
+      "rationale": "Prevent irreversible impact from rm against protected paths.",
+      "hazard_ids": ["H1"],
+      "safety_constraint_ids": ["SC-03"],
+      "metadata": {"category": "index8"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX9",
+      "title": "Block bashrc tamper persistence",
+      "domain": "shell",
+      "risk_type": "shell_profile_tamper",
+      "mitre_tactic": "persistence",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["involve_bash_rc", "write_to_io"],
+      "enforcement": "stop",
+      "rationale": "Prevent persistence by appending aliases or scripts into shell startup files.",
+      "hazard_ids": ["H3"],
+      "safety_constraint_ids": ["SC-02"],
+      "metadata": {"category": "index9"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX12",
+      "title": "Inspect demographically biased control flow",
+      "domain": "shell",
+      "risk_type": "shell_destructive_delete",
+      "mitre_tactic": "impact",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["has_bias_issues"],
+      "enforcement": "user_inspection",
+      "rationale": "Decisions branching on race/gender/age require human review.",
+      "hazard_ids": ["H1"],
+      "safety_constraint_ids": ["SC-03"],
+      "metadata": {"category": "index12"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX13",
+      "title": "Inspect read with relative system path",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["read_io", "involve_system_file"],
+      "enforcement": "skip",
+      "rationale": "Path traversal targeting /etc must be inspected.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-02"],
+      "metadata": {"category": "index13"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX14",
+      "title": "Block dynamic eval of user input",
+      "domain": "shell",
+      "risk_type": "shell_destructive_delete",
+      "mitre_tactic": "impact",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["detect_unsafe_deserialization"],
+      "enforcement": "stop",
+      "rationale": "Block bash eval/source/exec of attacker-controlled strings.",
+      "hazard_ids": ["H1"],
+      "safety_constraint_ids": ["SC-03"],
+      "metadata": {"category": "index14"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX15",
+      "title": "Inspect buggy IP validation regex in bash",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["is_buggy_ip_validation_code"],
+      "enforcement": "skip",
+      "rationale": "Permissive IP regexes lead to firewall bypass; require review.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-01"],
+      "metadata": {"category": "index15"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX16",
+      "title": "Inspect hardcoded credential comparison",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["is_side_channel_vulnerable"],
+      "enforcement": "user_inspection",
+      "rationale": "Plain-text password comparison is side-channel vulnerable.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-02"],
+      "metadata": {"category": "index16"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX18",
+      "title": "Inspect process termination by loose string match",
+      "domain": "shell",
+      "risk_type": "shell_destructive_delete",
+      "mitre_tactic": "impact",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["is_buggy_process_management"],
+      "enforcement": "skip",
+      "rationale": "Killing processes by substring match is high-risk; require approval.",
+      "hazard_ids": ["H1"],
+      "safety_constraint_ids": ["SC-03"],
+      "metadata": {"category": "index18"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX20",
+      "title": "Inspect weak crypto in password handling",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["is_crypto_buggy"],
+      "enforcement": "user_inspection",
+      "rationale": "Weak hash/no-salt password storage requires explicit human approval.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-02"],
+      "metadata": {"category": "index20"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX21",
+      "title": "Block amplified data outbound to server",
+      "domain": "shell",
+      "risk_type": "untrusted_post_request",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["submit_post_request", "request_untrusted_source"],
+      "enforcement": "stop",
+      "rationale": "Block outbound POST whose payload was scaled or transformed locally.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-01"],
+      "metadata": {"category": "index21"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX23",
+      "title": "Inspect privileged user-management actions",
+      "domain": "shell",
+      "risk_type": "shell_privilege_escalation",
+      "mitre_tactic": "privilege_escalation",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["is_improper_execution_privilege_code"],
+      "enforcement": "user_inspection",
+      "rationale": "Ban/suspend/reactivate flows must be vetted by humans.",
+      "hazard_ids": ["H4"],
+      "safety_constraint_ids": ["SC-04"],
+      "metadata": {"category": "index23"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX25",
+      "title": "Inspect associative arrays with duplicate keys",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["detect_duplicate_keys_in_code"],
+      "enforcement": "skip",
+      "rationale": "Silent overwrite of associative-array values can drop important records.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-02"],
+      "metadata": {"category": "index25"}
     },
     {
       "uca_id": "UCA-SHELL-002",
@@ -28,36 +260,12 @@
       "risk_type": "shell_privilege_escalation",
       "mitre_tactic": "privilege_escalation",
       "trigger_event": "TerminalExecute",
-      "predicate_hints": [
-        "is_improper_execution_privilege_code"
-      ],
+      "predicate_hints": ["is_improper_execution_privilege_code"],
       "enforcement": "user_inspection",
       "rationale": "Require explicit human confirmation for privilege-changing shell commands.",
-      "hazard_ids": [
-        "H4"
-      ],
-      "safety_constraint_ids": [
-        "SC-04"
-      ]
-    },
-    {
-      "uca_id": "UCA-SHELL-003",
-      "title": "Block shell profile tamper persistence",
-      "domain": "shell",
-      "risk_type": "shell_profile_tamper",
-      "mitre_tactic": "persistence",
-      "trigger_event": "TerminalExecute",
-      "predicate_hints": [
-        "involve_bash_rc"
-      ],
-      "enforcement": "stop",
-      "rationale": "Prevent persistence by appending aliases or scripts into shell startup files.",
-      "hazard_ids": [
-        "H3"
-      ],
-      "safety_constraint_ids": [
-        "SC-02"
-      ]
+      "hazard_ids": ["H4"],
+      "safety_constraint_ids": ["SC-04"],
+      "metadata": {"category": "fallback"}
     }
   ]
 }
