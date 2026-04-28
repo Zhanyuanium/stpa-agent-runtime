@@ -1,35 +1,38 @@
-# CUA Control Loop Model
+# CUA 控制回路模型（摘要）
 
-## Components
-- Controller: LLM planner (chooses next tool action).
-- Actuator:
-  - Python code executor.
-  - Shell command executor.
-- Controlled process: OS state transition (files, permissions, network, processes).
-- Sensor/feedback:
-  - tool observations
-  - runtime audits
-  - predicate checks on OS context
-- Safety controller: AgentSpec rule interpreter and enforcement module.
+更多入口见 `docs/index.md` 与 `docs/stpa-analysis.md`。
 
-## Control Flow
-1. User requirement enters planner.
-2. Planner proposes action (tool + input).
-3. AgentSpec evaluates trigger and predicates.
-4. Enforcement decision:
-   - continue
-   - stop
-   - user_inspection
-   - self_reflect
-5. Action executes only if allowed; feedback enters next planning step.
+## 1. 组成要素
 
-## Main Hazards
-- H1: action writes or deletes critical system targets.
-- H2: action leaks sensitive data to untrusted endpoints.
-- H3: action establishes persistence mechanisms.
-- H4: action escalates privileges without authorization.
+- **控制器**：LLM/智能体规划器（决定下一步工具动作）
+- **执行器**：
+  - Python 执行工具（如 `PythonREPL`）
+  - Shell 执行工具（如 `TerminalExecute`）
+- **受控过程**：操作系统状态迁移（文件/权限/网络/进程等）
+- **传感与反馈**：
+  - 工具输出（observations）
+  - 运行时审计（audits）
+  - 上下文谓词检查结果
+- **安全控制器**：AgentSpec 解释器与 enforce 模块
 
-## Safety Design Hooks
-- Event trigger at each planned action.
-- Context-aware predicates with cache.
-- Auditable enforcement logs with rationale snapshot.
+## 2. 控制流程（简化）
+
+1. 用户需求进入规划器  
+2. 规划器提出动作（工具 + 输入）  
+3. AgentSpec 判断触发条件并求值谓词  
+4. 产生裁决：`continue/skip/stop/user_inspection`  
+5. 仅在放行时执行动作；审计与反馈进入下一轮规划  
+
+## 3. 主要 Hazard（示例）
+
+- H1：对关键目标进行写入/删除等破坏性变更
+- H2：向不可信端点泄露敏感信息
+- H3：建立未授权持久化机制
+- H4：未授权提权或权限修改
+
+## 4. 安全设计挂钩点
+
+- 对每次规划动作进行事件触发（trigger）
+- 使用上下文谓词进行确定性检查（可配缓存）
+- 输出可追溯的审计记录（含规则与裁决快照）
+

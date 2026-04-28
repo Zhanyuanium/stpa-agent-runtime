@@ -1,25 +1,32 @@
-# Development Guide
+# 开发指南
 
-## Environment
-- Python >= 3.10
-- Use `uv` for dependency management.
+更多入口见 `docs/index.md`。
 
-## Setup
+## 1. 环境
+
+- Python **3.11+**（建议）
+- 依赖管理：`uv`
+
+## 2. 初始化
+
 ```bash
-uv venv
 uv sync --extra dev
 ```
 
-## Local Commands
+## 3. 常用命令
+
 ```bash
 uv run pytest
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
-## Branch and Commit
-- Work in local feature branches.
-- Commit in small increments with conventional prefixes:
+## 4. 分支与提交约定
+
+- 建议在本地特性分支上开发。
+- 提交信息采用简洁前缀风格（与仓库历史一致）：
   - `feat(scope): ...`
+  - `fix(scope): ...`
   - `test(scope): ...`
   - `docs(scope): ...`
   - `chore(scope): ...`
+

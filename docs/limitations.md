@@ -1,10 +1,24 @@
-# Current Limitations (Code + Shell Phase)
+# 已知限制与边界（Code + Shell）
 
-- Shell experiment path is intentionally strict spec-runtime only; LLM direct-judgment backend is not provided in this branch.
-- Shell grammar compatibility still relies on parser-known predicate names; fully dynamic predicate token extension is a future task.
-- Runtime cache key is action-name scoped and does not yet include full tool-input hashing.
-- Docker compose is designed for reproducible sandboxing, but resource-intensive services may require host-specific tuning.
-- AV and embodied domains remain intentionally deferred.
-- Owner-Harm 的 post-audit verifier 当前为 deterministic 规则集，对隐式语义攻击与跨轮长程依赖仍有漏检边界。
-- `structured_goal` 条件目前采用模板化 owner goal，不等同于真实产品中的授权工单/业务流程上下文。
-- AgentHarm 适配器采用宽松字段兼容策略，遇到非标准 schema 时可能退化到 `unknown` category，需要按数据版本补充映射。
+更多入口见 `docs/index.md`。本文记录当前实现与评测流程的主要边界，便于论文撰写与复现实验时正确解读结果。
+
+## 1. 运行时路径与覆盖范围
+
+- Shell 评测路径**有意保持** strict spec-runtime；本分支不提供 “LLM 直判/模型内环” 的 Shell 后端。
+- 目前聚焦 Code 与 Shell 两个域；AV/embodied 等域刻意延后。
+
+## 2. 规则与语法层面的限制
+
+- Shell 的谓词调用仍需满足解释器侧的谓词注册约束；“动态扩展 DSL 谓词 token/语法”属于后续工作。
+
+## 3. 性能与缓存
+
+- 运行时开销主要由“规则数 × 触发规则数 × 谓词求值次数”决定；当规则集扩展时，需要通过缓存与批处理策略控制成本。
+- 缓存键策略若未覆盖完整输入维度，可能导致命中率不足或重复计算（需在后续迭代中精化）。
+
+## 4. 语义后审计（若启用）
+
+- post-audit verifier 为确定性规则集，对隐式语义攻击、跨轮长程依赖等存在漏检边界。
+- `structured_goal` 条件目前为模板化上下文，并不等价于真实产品中的授权工单/业务流程系统。
+- AgentHarm 适配器为兼容多版本 schema 采用宽松字段策略，遇到非标准字段可能退化为 `unknown`，需按数据版本补充映射。
+

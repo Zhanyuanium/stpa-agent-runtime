@@ -1,26 +1,29 @@
-# Testing Strategy
+# 测试说明
 
-## Test Types
-- Unit tests: parser, predicates, compiler mapping, runtime actions.
-- Integration tests: JSON UCA -> `.spec` generation -> interpreter check.
-- E2E smoke tests: minimal code-domain case and metrics output.
-- Model-in-loop tests: shell risky/benign cases through runtime interpreter.
+更多入口见 `docs/index.md`。
 
-## Layout
+## 1. 测试类型
+
+- **Unit**：解析器、谓词、编译器映射、运行时动作等
+- **Integration**：JSON UCA → `.spec` → 解释器 `check/enforce` 的联调链路
+- **E2E**：最小可跑通用例与指标输出（冒烟）
+
+## 2. 目录约定
+
 - `tests/unit/`
 - `tests/integration/`
 - `tests/e2e/`
 - `tests/golden/`
 
-## Baseline Command
+## 3. 运行
+
 ```bash
 uv run pytest
 ```
 
-## Coverage Command (Core Modules)
+覆盖率（核心模块）：
+
 ```bash
 uv run pytest --cov=src/agentspec_codegen --cov=scripts --cov-report=term-missing
 ```
 
-## Coverage Goal
-- Core modules target >= 85% line coverage.

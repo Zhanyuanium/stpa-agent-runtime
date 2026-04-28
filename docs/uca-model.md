@@ -1,25 +1,29 @@
-# UCA Model (Code + Shell)
+# UCA 数据模型（Code + Shell）
 
-## File Layout
-- Sample knowledge base: `data/uca/code/sample_kb.json`
-- Shell sample knowledge base: `data/uca/shell/shell_kb.json`
-- Model code: `src/agentspec_codegen/uca/models.py`
-- ATT&CK mapping: `src/agentspec_codegen/uca/mitre.py`
+更多入口见 `docs/index.md`。
 
-## Core Fields
-- `uca_id`: stable unique identifier.
-- `domain`: domain enum (`code` or `shell`).
-- `risk_type`: normalized risk category per domain.
-- `mitre_tactic`: normalized ATT&CK tactic (`exfiltration`, `persistence`, `privilege_escalation`, `impact`).
-- `trigger_event`: AgentSpec trigger event (`PythonREPL` for code, `TerminalExecute` for shell).
-- `predicate_hints`: predicate candidates used by the compiler.
-- `enforcement`: target enforcement strategy (`stop`, `user_inspection`, etc.).
+## 1. 相关位置
 
-## Validation Rules
-- `uca_id` must be unique in one knowledge-base file.
-- `risk_type` and `mitre_tactic` must satisfy the mapping table.
+- Code 域样例 KB：`data/uca/code/sample_kb.json`
+- Shell 域 KB：`data/uca/shell/shell_kb.json`
+- 数据模型：`src/agentspec_codegen/uca/models.py`
+- ATT&CK 战术映射：`src/agentspec_codegen/uca/mitre.py`
 
-## Extension Rules
-- Add new risk categories in `UcaRiskType`.
-- Extend `ATTACK_TACTIC_TO_RISKS` for new ATT&CK tactics.
-- Add corresponding compiler mapping and tests before enabling in experiments.
+## 2. 核心字段（概念口径）
+
+- `uca_id`：稳定且全局唯一的条目 ID（同一 KB 文件内不得重复）
+- `domain`：`code` / `shell`
+- `risk_type`：域内归一化的风险类别
+- `mitre_tactic`：ATT&CK 战术标签（用于归类与对齐威胁模型）
+- `trigger_event`：触发事件（Code 常为 `PythonREPL`；Shell 常为 `TerminalExecute`）
+- `predicate_hints`：编译器优先使用的谓词提示列表（有序合取）
+- `enforcement`：期望的裁决策略（如 `stop`、`skip`、`user_inspection` 等）
+
+## 3. 校验与扩展
+
+- `risk_type` 与 `mitre_tactic` 需满足映射约束（否则应在模型/映射表中补齐）
+- 扩展新风险类别时：
+  - 先在 `UcaRiskType` 中定义
+  - 再补齐 ATT&CK 映射（如 `ATTACK_TACTIC_TO_RISKS`）
+  - 并添加对应的编译映射与测试后再进入实验
+
