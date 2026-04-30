@@ -5,6 +5,7 @@ from pathlib import Path
 from agentspec_codegen.compiler.rule_compiler import (
     compile_entry,
     compile_knowledge_base,
+    sort_artifacts_and_rules,
 )
 from agentspec_codegen.uca.models import UcaEntry
 from agentspec_codegen.uca.storage import load_uca_knowledge_base
@@ -26,6 +27,7 @@ def test_compile_entry_matches_golden() -> None:
         }
     )
     artifact = compile_entry(entry)
+    assert artifact.enforcement == "stop"
     golden = (Path(__file__).resolve().parents[1] / "golden" / "uca_code_001.spec").read_text(
         encoding="utf-8"
     )
@@ -69,3 +71,20 @@ def test_compile_shell_knowledge_base_is_parsable() -> None:
     for artifact in artifacts:
         parsed = Rule.from_text(artifact.spec_text)
         assert parsed.event == "TerminalExecute"
+
+
+def test_sort_artifacts_and_rules_orders_by_enforcement() -> None:
+    kb = load_uca_knowledge_base(
+        Path(__file__).resolve().parents[2] / "data" / "uca" / "shell" / "shell_kb.json"
+    )
+    artifacts = compile_knowledge_base(kb)
+    rules = [Rule.from_text(a.spec_text) for a in artifacts]
+    sorted_a, sorted_r = sort_artifacts_and_rules(list(artifacts), list(rules))
+    assert len(sorted_a) == len(artifacts)
+    # First rule after sort should be at least as strict as later ones (stop before skip).
+    ranks = {"stop": 0, "user_inspection": 1, "skip": 2}
+    prev = -1
+    for a in sorted_a:
+        r = ranks.get(a.enforcement.strip().lower(), 3)
+        assert r >= prev
+        prev = r
