@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "entries": [
     {
       "uca_id": "UCA-SHELL-INDEX1",
@@ -58,6 +58,20 @@
       "metadata": {"category": "index4"}
     },
     {
+      "uca_id": "UCA-SHELL-INDEX5",
+      "title": "Inspect broad system directory listing",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["list_directory", "involve_system_dir"],
+      "enforcement": "skip",
+      "rationale": "Directory reconnaissance under system paths may be operational but needs review.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-03"],
+      "metadata": {"category": "index5"}
+    },
+    {
       "uca_id": "UCA-SHELL-INDEX6",
       "title": "Block base64-encoded payload write",
       "domain": "shell",
@@ -112,6 +126,34 @@
       "hazard_ids": ["H3"],
       "safety_constraint_ids": ["SC-02"],
       "metadata": {"category": "index9"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX10",
+      "title": "Block script execution chained with data reads",
+      "domain": "shell",
+      "risk_type": "shell_privilege_escalation",
+      "mitre_tactic": "privilege_escalation",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["execute_script", "read_io"],
+      "enforcement": "stop",
+      "rationale": "Script execution triggered by read content may escalate privileges.",
+      "hazard_ids": ["H4"],
+      "safety_constraint_ids": ["SC-04"],
+      "metadata": {"category": "index10"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX11",
+      "title": "Inspect side-channel data collection workflow",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["is_side_channel_vulnerable", "write_to_io"],
+      "enforcement": "skip",
+      "rationale": "Side-channel patterns require explicit operator confirmation.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-03"],
+      "metadata": {"category": "index11"}
     },
     {
       "uca_id": "UCA-SHELL-INDEX12",
@@ -184,6 +226,20 @@
       "metadata": {"category": "index16"}
     },
     {
+      "uca_id": "UCA-SHELL-INDEX17",
+      "title": "Block improper privilege execution in shell",
+      "domain": "shell",
+      "risk_type": "shell_privilege_escalation",
+      "mitre_tactic": "privilege_escalation",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["is_improper_execution_privilege_code"],
+      "enforcement": "stop",
+      "rationale": "Improper privilege transitions can lock in unauthorized access.",
+      "hazard_ids": ["H4"],
+      "safety_constraint_ids": ["SC-04"],
+      "metadata": {"category": "index17"}
+    },
+    {
       "uca_id": "UCA-SHELL-INDEX18",
       "title": "Inspect process termination by loose string match",
       "domain": "shell",
@@ -196,6 +252,20 @@
       "hazard_ids": ["H1"],
       "safety_constraint_ids": ["SC-03"],
       "metadata": {"category": "index18"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX19",
+      "title": "Inspect weak PRNG usage in shell scripts",
+      "domain": "shell",
+      "risk_type": "sensitive_data_leak",
+      "mitre_tactic": "exfiltration",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["is_prng_buggy"],
+      "enforcement": "skip",
+      "rationale": "Weak randomness sources ($RANDOM, predictable seeds) need review.",
+      "hazard_ids": ["H2"],
+      "safety_constraint_ids": ["SC-02"],
+      "metadata": {"category": "index19"}
     },
     {
       "uca_id": "UCA-SHELL-INDEX20",
@@ -226,6 +296,20 @@
       "metadata": {"category": "index21"}
     },
     {
+      "uca_id": "UCA-SHELL-INDEX22",
+      "title": "Inspect bash case/esac missing catch-all branch",
+      "domain": "shell",
+      "risk_type": "startup_file_tamper",
+      "mitre_tactic": "persistence",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["detect_missing_default_case"],
+      "enforcement": "skip",
+      "rationale": "case statements without a *) default can leave inputs unhandled; require operator review.",
+      "hazard_ids": ["H22"],
+      "safety_constraint_ids": ["SC-06"],
+      "metadata": {"category": "index22"}
+    },
+    {
       "uca_id": "UCA-SHELL-INDEX23",
       "title": "Inspect privileged user-management actions",
       "domain": "shell",
@@ -238,6 +322,20 @@
       "hazard_ids": ["H4"],
       "safety_constraint_ids": ["SC-04"],
       "metadata": {"category": "index23"}
+    },
+    {
+      "uca_id": "UCA-SHELL-INDEX24",
+      "title": "Block unsafe deserialization and dynamic execution",
+      "domain": "shell",
+      "risk_type": "shell_destructive_delete",
+      "mitre_tactic": "impact",
+      "trigger_event": "TerminalExecute",
+      "predicate_hints": ["detect_unsafe_deserialization"],
+      "enforcement": "stop",
+      "rationale": "Unsafe eval/source/exec of untrusted input is blocked.",
+      "hazard_ids": ["H1"],
+      "safety_constraint_ids": ["SC-03"],
+      "metadata": {"category": "index24"}
     },
     {
       "uca_id": "UCA-SHELL-INDEX25",
