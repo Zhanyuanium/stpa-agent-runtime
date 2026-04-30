@@ -56,17 +56,3 @@ stpa-agent-runtime/
 ├─ docs/                     # 设计与复现文档（README 只做导航）
 └─ tests/                    # 单元/集成/E2E
 ```
-
-## 引用
-
-```bibtex
-@misc{wang2025agentspeccustomizableruntimeenforcement,
-  title={AgentSpec: Customizable Runtime Enforcement for Safe and Reliable LLM Agents},
-  author={Haoyu Wang and Christopher M. Poskitt and Jun Sun},
-  year={2025},
-  eprint={2503.18666},
-  archivePrefix={arXiv},
-  primaryClass={cs.AI},
-  url={https://arxiv.org/abs/2503.18666}
-}
-```
