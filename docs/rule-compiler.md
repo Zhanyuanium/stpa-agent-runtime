@@ -15,6 +15,7 @@
   - `rule_id`：运行时规则 ID（由 `uca_id` 规范化得到）
   - `uca_id`：来源 UCA
   - `predicates`：谓词合取列表（有序）
+  - `enforcement`：UCA 条目的处置策略（`stop` / `skip` / `user_inspection` 等）
   - `spec_text`：生成的 `.spec` 文本
 
 ## 3. 映射策略（优先级）
