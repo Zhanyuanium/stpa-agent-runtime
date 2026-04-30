@@ -28,6 +28,7 @@ class CompilationArtifact:
     uca_id: str
     spec_text: str
     predicates: list[str]
+    enforcement: str
 
 
 def _normalize_rule_id(uca_id: str) -> str:
@@ -58,7 +59,31 @@ def compile_entry(entry: UcaEntry) -> CompilationArtifact:
         enforcement=entry.enforcement,
     )
     spec_text = spec_text.rstrip() + "\n"
-    return CompilationArtifact(rule_id=rule_id, uca_id=entry.uca_id, spec_text=spec_text, predicates=predicates)
+    return CompilationArtifact(
+        rule_id=rule_id,
+        uca_id=entry.uca_id,
+        spec_text=spec_text,
+        predicates=predicates,
+        enforcement=entry.enforcement,
+    )
+
+
+_ENFORCE_ORDER: dict[str, int] = {"stop": 0, "user_inspection": 1, "skip": 2}
+
+
+def _enforcement_sort_key(artifact: CompilationArtifact) -> tuple[int, str]:
+    e = (artifact.enforcement or "none").strip().lower()
+    return (_ENFORCE_ORDER.get(e, 3), artifact.rule_id)
+
+
+def sort_artifacts_and_rules(
+    artifacts: list[CompilationArtifact], rules: list
+) -> tuple[list[CompilationArtifact], list]:
+    """Order rules so stricter enforcement is tried first (faster short-circuit)."""
+    if len(artifacts) != len(rules):
+        raise ValueError("artifacts and rules must have the same length")
+    order = sorted(range(len(artifacts)), key=lambda i: _enforcement_sort_key(artifacts[i]))
+    return [artifacts[i] for i in order], [rules[i] for i in order]
 
 
 def compile_knowledge_base(knowledge_base: UcaKnowledgeBase) -> list[CompilationArtifact]:
