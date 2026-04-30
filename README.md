@@ -1,4 +1,4 @@
-# AgentSpec：面向 LLM 智能体的可审计运行时规则执行（Code + Shell）
+# stpa-agent-runtime：面向 LLM 智能体的可审计运行时规则执行（Code + Shell）
 
 本仓库实现并评测一种**“UCA（STPA）→ DSL 规则 → 运行时拦截”**的安全执行链路，面向 LLM 智能体在调用工具（如 `PythonREPL`、`TerminalExecute`）时的高风险操作进行**确定性**约束与审计留痕。
 
@@ -49,7 +49,7 @@ uv run python scripts/verify_dataset.py --redcode-root ./benchmarks/RedCode-Exec
 ## 目录结构（概览）
 
 ```text
-AgentSpec/
+stpa-agent-runtime/
 ├─ data/uca/                 # UCA 知识库（手工/生成）
 ├─ src/                      # 解释器、谓词、编译与评测组件
 ├─ scripts/                  # 数据校验、实验运行、报表导出脚本
