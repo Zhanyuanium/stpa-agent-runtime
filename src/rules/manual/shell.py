@@ -5,10 +5,15 @@ implementation in :mod:`rules.manual.pythonrepl` first and then ORs in
 shell-specific detection logic. This union pattern preserves the Python-domain
 behaviour (so the code-domain experiments are unaffected) while letting the
 same predicate token also fire on bash/shell command text.
+
+Performance note: this module maintains two per-batch caches to avoid redundant
+``shlex.split`` + risk-flag extraction and repeated shellcheck invocations.
+Call ``clear_command_caches()`` at the start of each new case batch.
 """
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -18,8 +23,44 @@ from agentspec_codegen.predicates.os_checks import (
     is_permission_change_risky,
     is_sensitive_path,
 )
-from agentspec_codegen.shell_parser import extract_command_features, ensure_shellcheck_run
+from agentspec_codegen.shell_parser import (
+    ParsedShellCommand,
+    extract_command_features,
+    ensure_shellcheck_run,
+)
 from rules.manual import pythonrepl as _py
+
+# ---------------------------------------------------------------------------
+# Per-batch caches – cleared via clear_command_caches() between cases
+# ---------------------------------------------------------------------------
+_command_feature_cache: dict[str, ParsedShellCommand] = {}
+_shellcheck_done: set[str] = set()
+_shell_text_hint_cache: dict[str, bool] = {}
+
+
+def clear_command_caches() -> None:
+    """Clear the per-command feature and shellcheck caches.
+
+    Call this at the beginning of each new evaluation case so that
+    predicates always see fresh state for a new command text.
+    """
+    _command_feature_cache.clear()
+    _shellcheck_done.clear()
+    _shell_text_hint_cache.clear()
+
+
+def _shell_text_hint(text: str) -> bool:
+    """Cached :func:`_is_shell_text` result for a command string."""
+    if text not in _shell_text_hint_cache:
+        _shell_text_hint_cache[text] = _is_shell_text(text)
+    return _shell_text_hint_cache[text]
+
+
+def _shell_skip_python_delegate(text: str) -> bool:
+    """If True, skip calling Python-domain predicates (shell microbench baseline: set ``AGENTSPEC_SHELL_SHORTCIRCUIT_PY=0``)."""
+    if os.environ.get("AGENTSPEC_SHELL_SHORTCIRCUIT_PY", "1").lower() in ("0", "false", "no"):
+        return False
+    return _shell_text_hint(text)
 
 
 def _as_text(tool_input: object) -> str:
@@ -28,9 +69,18 @@ def _as_text(tool_input: object) -> str:
     return str(tool_input)
 
 
+def _get_cached_features(cmd: str) -> ParsedShellCommand:
+    """Return parsed shell features, computing them once per unique command."""
+    if cmd not in _command_feature_cache:
+        _command_feature_cache[cmd] = extract_command_features(cmd)
+    return _command_feature_cache[cmd]
+
+
 def _ensure_shellcheck(cmd: str) -> None:
-    if cmd:
+    """Trigger shellcheck at most once per unique command text per batch."""
+    if cmd and cmd not in _shellcheck_done:
         ensure_shellcheck_run(cmd)
+        _shellcheck_done.add(cmd)
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +245,108 @@ def _shell_buggy_ip_validation(text: str) -> bool:
     return False
 
 
+def _iter_bash_case_blocks(text: str):
+    """Yield each top-level ``case ... esac`` span (inclusive) in source order."""
+    i = 0
+    n = len(text)
+    while i < n:
+        m = re.search(r"\bcase\b", text[i:])
+        if not m:
+            break
+        block_start = i + m.start()
+        j = i + m.end()
+        depth = 1
+        while j < n:
+            sub = text[j:]
+            mc = re.search(r"\bcase\b", sub)
+            me = re.search(r"\besac\b", sub)
+            if me is None:
+                return
+            esac_rel_start = j + me.start()
+            case_rel_start = j + mc.start() if mc else None
+            if case_rel_start is not None and case_rel_start < esac_rel_start:
+                depth += 1
+                j = j + mc.end()
+            else:
+                depth -= 1
+                j = j + me.end()
+                if depth == 0:
+                    yield text[block_start:j]
+                    break
+        else:
+            break
+        i = j
+
+
+def _case_inner_from_block(block: str) -> str | None:
+    """Return the branch region between the first ``in`` and the final ``esac``."""
+    esacs = list(re.finditer(r"\besac\b", block))
+    if not esacs:
+        return None
+    inner_end = esacs[-1].start()
+    in_m = re.search(r"\bin\b", block)
+    if not in_m or in_m.end() > inner_end:
+        return None
+    return block[in_m.end() : inner_end]
+
+
+def _strip_nested_case_esac(inner: str) -> str:
+    """Replace nested ``case ... esac`` regions with spaces so outer ``*)`` is visible."""
+    parts: list[str] = []
+    i = 0
+    while i < len(inner):
+        m = re.search(r"\bcase\b", inner[i:])
+        if not m:
+            parts.append(inner[i:])
+            break
+        start = i + m.start()
+        parts.append(inner[i:start])
+        j = start + m.end()
+        depth = 1
+        while j < len(inner):
+            sub = inner[j:]
+            mc = re.search(r"\bcase\b", sub)
+            me = re.search(r"\besac\b", sub)
+            if me is None:
+                parts.append(inner[start:])
+                return "".join(parts)
+            esac_rel_start = j + me.start()
+            case_rel_start = j + mc.start() if mc else None
+            if case_rel_start is not None and case_rel_start < esac_rel_start:
+                depth += 1
+                j = j + mc.end()
+            else:
+                depth -= 1
+                j = j + me.end()
+                if depth == 0:
+                    parts.append(" ")
+                    i = j
+                    break
+        else:
+            parts.append(inner[start:])
+            break
+    return "".join(parts)
+
+
+def _has_bash_case_catch_all(stripped: str) -> bool:
+    """True if a branch uses ``*`` as a pattern alternative before ``)``."""
+    return bool(re.search(r"(?:^|[\n;|])\s*\*+\s*\)", stripped, re.MULTILINE))
+
+
+def _shell_missing_default_case(text: str) -> bool:
+    """Detect ``case`` / ``esac`` without a catch-all ``*)`` branch (bash analogue of Python match-default)."""
+    if not re.search(r"\bcase\b", text):
+        return False
+    for block in _iter_bash_case_blocks(text):
+        inner = _case_inner_from_block(block)
+        if inner is None:
+            continue
+        flattened = _strip_nested_case_esac(inner)
+        if not _has_bash_case_catch_all(flattened):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Standalone shell-only predicates that do not have a Python counterpart.
 # These are intentionally kept; they are not parser tokens but are usable
@@ -204,14 +356,14 @@ def _shell_buggy_ip_validation(text: str) -> bool:
 def shell_is_destructive_delete(user_input, tool_input, intermediate_steps) -> bool:
     cmd = _as_text(tool_input)
     _ensure_shellcheck(cmd)
-    parsed = extract_command_features(cmd)
+    parsed = _get_cached_features(cmd)
     return "destructive_delete" in parsed.risk_flags
 
 
 def shell_touches_sensitive_path(user_input, tool_input, intermediate_steps) -> bool:
     cmd = _as_text(tool_input)
     _ensure_shellcheck(cmd)
-    parsed = extract_command_features(cmd)
+    parsed = _get_cached_features(cmd)
     return any(is_sensitive_path(path) for path in parsed.paths)
 
 
@@ -251,7 +403,7 @@ def shell_permission_change_risky(user_input, tool_input, intermediate_steps) ->
 def shell_target_has_backup(user_input, tool_input, intermediate_steps) -> bool:
     cmd = _as_text(tool_input)
     _ensure_shellcheck(cmd)
-    parsed = extract_command_features(cmd)
+    parsed = _get_cached_features(cmd)
     for path in parsed.paths:
         if has_backup_for_target(path):
             return True
@@ -267,7 +419,7 @@ def shell_target_has_backup(user_input, tool_input, intermediate_steps) -> bool:
 def submit_post_request(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.submit_post_request(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.submit_post_request(user_input, text, intermediate_steps):
         return True
     return _shell_post_request(text)
 
@@ -275,7 +427,7 @@ def submit_post_request(user_input, tool_input, intermediate_steps) -> bool:
 def request_untrusted_source(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.request_untrusted_source(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.request_untrusted_source(user_input, text, intermediate_steps):
         return True
     return _shell_external_url(text)
 
@@ -283,7 +435,7 @@ def request_untrusted_source(user_input, tool_input, intermediate_steps) -> bool
 def encode_data(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.encode_data(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.encode_data(user_input, text, intermediate_steps):
         return True
     return _shell_encoding(text)
 
@@ -291,7 +443,7 @@ def encode_data(user_input, tool_input, intermediate_steps) -> bool:
 def copy_file(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.copy_file(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.copy_file(user_input, text, intermediate_steps):
         return True
     return _shell_copy(text)
 
@@ -299,7 +451,7 @@ def copy_file(user_input, tool_input, intermediate_steps) -> bool:
 def read_io(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.read_io(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.read_io(user_input, text, intermediate_steps):
         return True
     return _shell_read(text)
 
@@ -307,7 +459,7 @@ def read_io(user_input, tool_input, intermediate_steps) -> bool:
 def write_to_io(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.write_to_io(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.write_to_io(user_input, text, intermediate_steps):
         return True
     return _shell_write(text)
 
@@ -315,7 +467,7 @@ def write_to_io(user_input, tool_input, intermediate_steps) -> bool:
 def list_directory(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.list_directory(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.list_directory(user_input, text, intermediate_steps):
         return True
     return _shell_list_directory(text)
 
@@ -323,7 +475,7 @@ def list_directory(user_input, tool_input, intermediate_steps) -> bool:
 def execute_script(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.execute_script(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.execute_script(user_input, text, intermediate_steps):
         return True
     return _shell_execute_script(text)
 
@@ -331,7 +483,7 @@ def execute_script(user_input, tool_input, intermediate_steps) -> bool:
 def destuctive_os_inst(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.destuctive_os_inst(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.destuctive_os_inst(user_input, text, intermediate_steps):
         return True
     if re.search(r"\b(rm|unlink)\b", text):
         return True
@@ -341,25 +493,25 @@ def destuctive_os_inst(user_input, tool_input, intermediate_steps) -> bool:
 def involve_system_file(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.involve_system_file(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.involve_system_file(user_input, text, intermediate_steps):
         return True
-    parsed = extract_command_features(text)
+    parsed = _get_cached_features(text)
     return any(is_sensitive_path(path) for path in parsed.paths)
 
 
 def involve_system_dir(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.involve_system_dir(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.involve_system_dir(user_input, text, intermediate_steps):
         return True
-    parsed = extract_command_features(text)
+    parsed = _get_cached_features(text)
     return any(is_sensitive_path(path) for path in parsed.paths)
 
 
 def is_improper_execution_privilege_code(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.is_improper_execution_privilege_code(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.is_improper_execution_privilege_code(user_input, text, intermediate_steps):
         return True
     return shell_requires_privilege(user_input, text, intermediate_steps) or shell_permission_change_risky(
         user_input, text, intermediate_steps
@@ -369,7 +521,7 @@ def is_improper_execution_privilege_code(user_input, tool_input, intermediate_st
 def involve_bash_rc(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.involve_bash_rc(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.involve_bash_rc(user_input, text, intermediate_steps):
         return True
     return shell_modifies_profile_startup(user_input, text, intermediate_steps)
 
@@ -377,7 +529,7 @@ def involve_bash_rc(user_input, tool_input, intermediate_steps) -> bool:
 def is_side_channel_vulnerable(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.is_side_channel_vulnerable(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.is_side_channel_vulnerable(user_input, text, intermediate_steps):
         return True
     return _shell_side_channel(text)
 
@@ -385,7 +537,7 @@ def is_side_channel_vulnerable(user_input, tool_input, intermediate_steps) -> bo
 def is_crypto_buggy(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.is_crypto_buggy(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.is_crypto_buggy(user_input, text, intermediate_steps):
         return True
     return _shell_crypto(text)
 
@@ -393,7 +545,7 @@ def is_crypto_buggy(user_input, tool_input, intermediate_steps) -> bool:
 def is_buggy_process_management(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.is_buggy_process_management(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.is_buggy_process_management(user_input, text, intermediate_steps):
         return True
     return _shell_process_management(text)
 
@@ -401,7 +553,7 @@ def is_buggy_process_management(user_input, tool_input, intermediate_steps) -> b
 def detect_unsafe_deserialization(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.detect_unsafe_deserialization(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.detect_unsafe_deserialization(user_input, text, intermediate_steps):
         return True
     return _shell_unsafe_deserialization(text)
 
@@ -409,7 +561,7 @@ def detect_unsafe_deserialization(user_input, tool_input, intermediate_steps) ->
 def detect_duplicate_keys_in_code(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.detect_duplicate_keys_in_code(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.detect_duplicate_keys_in_code(user_input, text, intermediate_steps):
         return True
     return _shell_duplicate_keys(text)
 
@@ -417,7 +569,7 @@ def detect_duplicate_keys_in_code(user_input, tool_input, intermediate_steps) ->
 def is_prng_buggy(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.is_prng_buggy(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.is_prng_buggy(user_input, text, intermediate_steps):
         return True
     return _shell_prng_buggy(text)
 
@@ -425,7 +577,7 @@ def is_prng_buggy(user_input, tool_input, intermediate_steps) -> bool:
 def is_amplification(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.is_amplification(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.is_amplification(user_input, text, intermediate_steps):
         return True
     return _shell_amplification(text)
 
@@ -433,9 +585,17 @@ def is_amplification(user_input, tool_input, intermediate_steps) -> bool:
 def is_buggy_ip_validation_code(user_input, tool_input, intermediate_steps) -> bool:
     text = _as_text(tool_input)
     _ensure_shellcheck(text)
-    if _py.is_buggy_ip_validation_code(user_input, text, intermediate_steps):
+    if not _shell_skip_python_delegate(text) and _py.is_buggy_ip_validation_code(user_input, text, intermediate_steps):
         return True
     return _shell_buggy_ip_validation(text)
+
+
+def detect_missing_default_case(user_input, tool_input, intermediate_steps) -> bool:
+    text = _as_text(tool_input)
+    _ensure_shellcheck(text)
+    if not _shell_skip_python_delegate(text) and _py.detect_missing_default_case(user_input, text, intermediate_steps):
+        return True
+    return _shell_missing_default_case(text)
 
 
 shell_predicates = {
@@ -470,4 +630,5 @@ shell_predicates = {
     "is_prng_buggy": is_prng_buggy,
     "is_amplification": is_amplification,
     "is_buggy_ip_validation_code": is_buggy_ip_validation_code,
+    "detect_missing_default_case": detect_missing_default_case,
 }
