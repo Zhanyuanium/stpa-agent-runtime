@@ -1,3 +1,4 @@
+import os
 from abc import abstractmethod
 from enum import Enum
 from pydantic import BaseModel 
@@ -35,6 +36,10 @@ class UserInspection(Enforcement):
         """
         Prompt the user to decide whether to take an action.
         """
+        if os.environ.get("AGENTSPEC_NON_INTERACTIVE", "").lower() in ("1", "true", "yes"):
+            # Batch experiments / CI: treat as declined (same outcome as ``no``).
+            return EnforceResult.SKIP, Action.get_skip()
+
         user_auth = False
 
         while True:

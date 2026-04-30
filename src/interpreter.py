@@ -6,7 +6,7 @@ from spec_lang.AgentSpecParser import AgentSpecParser
 from antlr4.error.ErrorListener import ErrorListener 
 from state import RuleState
 from enforcement import *
-from rule import Rule
+from rule import Rule, _get_or_parse_tree
 from agent import Action
 from rules.manual.table import predicate_table
 # from rules.predicate_table import predicate_table
@@ -117,17 +117,9 @@ class RuleInterpreter(AgentSpecListener):
     
      
     def verify_and_enforce(self, action: Action) -> Action: 
-        input_stream = InputStream(self.rule.raw)
-        lexer = AgentSpecLexer(input_stream)
-        token_stream = CommonTokenStream(lexer)
-        parser = AgentSpecParser(token_stream)
-        parser.removeErrorListeners()  # Remove default ConsoleErrorListener
-        parser.addErrorListener(CustomErrorListener())
-
-        # Parse the input using the top-level rule (e.g., program)
-        tree = parser.program() 
+        # Use cached parse tree to avoid redundant ANTLR lexing/parsing.
+        tree = _get_or_parse_tree(self.rule.raw)
         walker = ParseTreeWalker()
-        
         walker.walk(self, tree)   
         return ENFORCEMENT_TO_CLASS[self.enforce](state=self.rule_state).apply(action)
     
