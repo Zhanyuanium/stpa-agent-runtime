@@ -20,19 +20,18 @@ import json
 import statistics
 import time
 from pathlib import Path
-from typing import Iterable
 
 from antlr4 import CommonTokenStream, InputStream, ParseTreeWalker
 from spec_lang.AgentSpecLexer import AgentSpecLexer
 from spec_lang.AgentSpecParser import AgentSpecParser
 
 from agent import Action
-from enforcement import EnforceResult
 from interpreter import RuleInterpreter
 from rule import Rule
 from state import RuleState
 from agentspec_codegen.compiler.rule_compiler import compile_knowledge_base
 from agentspec_codegen.uca.storage import load_uca_knowledge_base
+from rules.manual.shell import clear_command_caches
 
 
 def _percentile(values: list[float], pct: float) -> float:
@@ -56,18 +55,28 @@ def _summary(values: list[float]) -> dict:
     }
 
 
+def _extract_payload_code(sample: dict) -> str:
+    return (
+        sample.get("Code")
+        or sample.get("code")
+        or sample.get("Bash")
+        or sample.get("command")
+        or ""
+    )
+
+
 def _load_cases(redcode_root: Path, benign_json: Path, max_per_category: int) -> list[dict]:
     cases: list[dict] = []
     for file in sorted(redcode_root.glob("index*_30_codes_full*.json")):
         category = file.stem.split("_")[0]
         rows = json.loads(file.read_text(encoding="utf-8"))
         for sample in rows[:max_per_category]:
-            code = sample.get("Code") or sample.get("code") or ""
+            code = _extract_payload_code(sample)
             cases.append({"case_id": f"risky:{category}:{sample.get('Index', '')}", "category": category, "code": code, "is_risky": True})
     if benign_json.exists():
         rows = json.loads(benign_json.read_text(encoding="utf-8"))
         for sample in rows[: max_per_category * 5]:
-            code = sample.get("Code") or sample.get("code") or ""
+            code = _extract_payload_code(sample)
             cases.append({"case_id": f"benign:{sample.get('Index', '')}", "category": "benign", "code": code, "is_risky": False})
     return cases
 
@@ -83,9 +92,9 @@ def _phase_parse(rule_raw: str) -> tuple[float, object]:
     return elapsed_ms, tree
 
 
-def _phase_eval(rule: Rule, tree: object, code: str) -> tuple[float, str, dict]:
-    action = Action(name="PythonREPL", input=code, action=None)
-    state = RuleState(action=action, intermediate_steps=[], user_input=code)
+def _phase_eval(rule: Rule, tree: object, code: str, action_name: str, user_input: str) -> tuple[float, str, dict]:
+    action = Action(name=action_name, input=code, action=None)
+    state = RuleState(action=action, intermediate_steps=[], user_input=user_input)
     interpreter = RuleInterpreter(rule, state)
     started = time.perf_counter()
     walker = ParseTreeWalker()
@@ -103,9 +112,20 @@ def _phase_audit(payload: dict, dest_dir: Path, case_id: str) -> float:
     return (time.perf_counter() - started) * 1000
 
 
-def run(redcode_root: Path, benign_json: Path, kb_path: Path, output_dir: Path, max_per_category: int, repeats: int) -> dict:
+def run(
+    *,
+    domain: str,
+    redcode_root: Path,
+    benign_json: Path,
+    kb_path: Path,
+    output_dir: Path,
+    max_per_category: int,
+    repeats: int,
+) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     audit_dir = output_dir / "scratch_audits"
+
+    action_name = "TerminalExecute" if domain == "shell" else "PythonREPL"
 
     kb_obj = load_uca_knowledge_base(kb_path)
     artifacts = compile_knowledge_base(kb_obj)
@@ -119,15 +139,19 @@ def run(redcode_root: Path, benign_json: Path, kb_path: Path, output_dir: Path, 
     e2e_samples: list[float] = []
 
     for case in cases:
+        if domain == "shell":
+            clear_command_caches()
         case_id_safe = case["case_id"].replace(":", "_").replace("/", "_").replace("\\", "_")
+        code = case["code"]
+        user_input = code
         for _ in range(repeats):
             e2e_started = time.perf_counter()
             for rule in rules:
-                if not rule.triggered("PythonREPL", case["code"]):
+                if not rule.triggered(action_name, code):
                     continue
                 parse_ms, tree = _phase_parse(rule.raw)
                 parse_samples.append(parse_ms)
-                eval_ms, enforce_name, history = _phase_eval(rule, tree, case["code"])
+                eval_ms, enforce_name, history = _phase_eval(rule, tree, code, action_name, user_input)
                 eval_samples.append(eval_ms)
                 audit_payload = {
                     "rule_id": rule.id,
@@ -141,7 +165,16 @@ def run(redcode_root: Path, benign_json: Path, kb_path: Path, output_dir: Path, 
                     break
             e2e_samples.append((time.perf_counter() - e2e_started) * 1000)
 
+    total_ms = sum(parse_samples) + sum(eval_samples) + sum(audit_samples)
+    phase_shares = {
+        "parse_pct": (sum(parse_samples) / total_ms * 100.0) if total_ms > 0 else 0.0,
+        "eval_pct": (sum(eval_samples) / total_ms * 100.0) if total_ms > 0 else 0.0,
+        "audit_pct": (sum(audit_samples) / total_ms * 100.0) if total_ms > 0 else 0.0,
+    }
+
     summary = {
+        "domain": domain,
+        "action_name": action_name,
         "kb_path": str(kb_path),
         "redcode_root": str(redcode_root),
         "benign_json": str(benign_json),
@@ -153,16 +186,24 @@ def run(redcode_root: Path, benign_json: Path, kb_path: Path, output_dir: Path, 
         "phase_eval": _summary(eval_samples),
         "phase_audit": _summary(audit_samples),
         "end_to_end": _summary(e2e_samples),
+        "phase_total_ms_shares_pct": phase_shares,
     }
     (output_dir / "microbench_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
     md_lines = [
         "# Runtime overhead micro-benchmark",
         "",
+        f"- Domain: `{domain}` (action `{action_name}`)",
         f"- Knowledge base: `{kb_path}`",
         f"- Rule count: {summary['rule_count']}",
         f"- Sampled cases: {summary['case_count']} (cap {max_per_category}/category)",
         f"- Repeats per case: {repeats}",
+        "",
+        "## Phase time shares (sum of all samples)",
+        "",
+        f"- Parse: **{phase_shares['parse_pct']:.1f}%**",
+        f"- Predicate eval: **{phase_shares['eval_pct']:.1f}%**",
+        f"- Audit write: **{phase_shares['audit_pct']:.1f}%**",
         "",
         "| Phase | Mean (ms) | Median (ms) | p95 (ms) | n |",
         "| --- | --- | --- | --- | --- |",
@@ -181,22 +222,47 @@ def run(redcode_root: Path, benign_json: Path, kb_path: Path, output_dir: Path, 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--redcode-root", type=Path, default=Path("benchmarks/RedCode-Exec/py2text_dataset_json"))
-    parser.add_argument("--benign-json", type=Path, default=Path("benchmarks/current_eval/code_safe_equal_mbpp.json"))
-    parser.add_argument("--kb", type=Path, default=Path("data/uca/code/sample_kb.json"))
+    parser.add_argument("--domain", choices=["code", "shell"], default="code")
+    parser.add_argument(
+        "--redcode-root",
+        type=Path,
+        default=None,
+        help="RedCode-Exec category json directory (default depends on --domain).",
+    )
+    parser.add_argument(
+        "--benign-json",
+        type=Path,
+        default=None,
+        help="Benign json path (default depends on --domain).",
+    )
+    parser.add_argument("--kb", type=Path, default=None, help="UCA KB json (default depends on --domain).")
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/perf"))
     parser.add_argument("--max-per-category", type=int, default=3)
     parser.add_argument("--repeats", type=int, default=5)
     args = parser.parse_args()
+
+    if args.domain == "shell":
+        redcode = args.redcode_root or Path("benchmarks/RedCode-Exec/bash2text_dataset_json")
+        benign = args.benign_json or Path("benchmarks/current_eval/shell_safe_equal_shellbench.json")
+        kb = args.kb or Path("data/uca/shell/shell_kb.json")
+    else:
+        redcode = args.redcode_root or Path("benchmarks/RedCode-Exec/py2text_dataset_json")
+        benign = args.benign_json or Path("benchmarks/current_eval/code_safe_equal_mbpp.json")
+        kb = args.kb or Path("data/uca/code/sample_kb.json")
+
     summary = run(
-        redcode_root=args.redcode_root,
-        benign_json=args.benign_json,
-        kb_path=args.kb,
+        domain=args.domain,
+        redcode_root=redcode,
+        benign_json=benign,
+        kb_path=kb,
         output_dir=args.output_dir,
         max_per_category=args.max_per_category,
         repeats=args.repeats,
     )
     print(f"output_dir={args.output_dir}")
+    print(f"domain={summary['domain']} action={summary['action_name']}")
+    sh = summary.get("phase_total_ms_shares_pct") or {}
+    print(f"phase_shares_parse={sh.get('parse_pct', 0):.1f}% eval={sh.get('eval_pct', 0):.1f}% audit={sh.get('audit_pct', 0):.1f}%")
     print(f"phase_parse_mean={summary['phase_parse']['mean_ms']:.3f}ms")
     print(f"phase_eval_mean={summary['phase_eval']['mean_ms']:.3f}ms")
     print(f"phase_audit_mean={summary['phase_audit']['mean_ms']:.3f}ms")

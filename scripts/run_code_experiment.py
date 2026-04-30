@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import time
 from pathlib import Path
@@ -11,7 +12,12 @@ from agentspec_codegen.eval import (
     evaluate_cases_by_field,
     summarize_to_markdown,
 )
-from agentspec_codegen.compiler.rule_compiler import CompilationArtifact, compile_knowledge_base, write_compiled_rules
+from agentspec_codegen.compiler.rule_compiler import (
+    CompilationArtifact,
+    compile_knowledge_base,
+    sort_artifacts_and_rules,
+    write_compiled_rules,
+)
 from agentspec_codegen.uca.models import UcaKnowledgeBase
 from agentspec_codegen.uca.owner_harm import map_owner_harm_category
 from agentspec_codegen.uca.storage import load_uca_knowledge_base
@@ -88,9 +94,10 @@ def load_rules_from_uca(
             raise ValueError("either kb_path or kb_obj must be provided")
         kb_obj = load_uca_knowledge_base(kb_path)
     artifacts = compile_knowledge_base(kb_obj)
+    rules = [Rule.from_text(item.spec_text) for item in artifacts]
+    artifacts, rules = sort_artifacts_and_rules(artifacts, rules)
     if compiled_spec_dir:
         write_compiled_rules(artifacts, compiled_spec_dir)
-    rules = [Rule.from_text(item.spec_text) for item in artifacts]
     return kb_obj, artifacts, rules
 
 
@@ -241,6 +248,7 @@ def run(
                     "rule_id": item.rule_id,
                     "uca_id": item.uca_id,
                     "predicates": item.predicates,
+                    "enforcement": item.enforcement,
                     "spec_path": str((spec_dir / f"{item.rule_id}.spec").as_posix()),
                 }
                 for item in artifacts
@@ -335,6 +343,8 @@ def run(
 
 
 def main() -> int:
+    os.environ.setdefault("AGENTSPEC_NON_INTERACTIVE", "1")
+
     parser = argparse.ArgumentParser(description="Run code-domain AgentSpec experiment.")
     parser.add_argument("--mode", choices=["baseline", "manual", "generated"], required=True)
     parser.add_argument("--redcode-root", type=Path, required=True)

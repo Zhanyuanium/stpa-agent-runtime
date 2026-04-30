@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import time
 from pathlib import Path
@@ -11,12 +12,18 @@ from agentspec_codegen.eval import evaluate_cases, summarize_to_markdown
 from agentspec_codegen.runtime import RuleAuditRecord
 from agentspec_codegen.shell_parser import get_shellcheck_summary_for_audit
 from agentspec_codegen.uca.storage import load_uca_knowledge_base
-from agentspec_codegen.compiler.rule_compiler import CompilationArtifact, compile_knowledge_base, write_compiled_rules
+from agentspec_codegen.compiler.rule_compiler import (
+    CompilationArtifact,
+    compile_knowledge_base,
+    sort_artifacts_and_rules,
+    write_compiled_rules,
+)
 from agent import Action
 from enforcement import EnforceResult
 from interpreter import RuleInterpreter
-from rule import Rule
+from rule import Rule, clear_parse_tree_cache
 from state import RuleState
+from rules.manual.shell import clear_command_caches
 
 
 def _safe_case_id(case_id: str) -> str:
@@ -37,11 +44,14 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 def _load_rules_from_kb(kb_path: Path) -> tuple[object, list[CompilationArtifact], list[Rule]]:
     kb = load_uca_knowledge_base(kb_path)
     artifacts = compile_knowledge_base(kb)
-    return kb, artifacts, [Rule.from_text(item.spec_text) for item in artifacts]
+    rules = [Rule.from_text(item.spec_text) for item in artifacts]
+    artifacts, rules = sort_artifacts_and_rules(artifacts, rules)
+    return kb, artifacts, rules
 
 
 def _enforce_once(action: Action, rules: list[Rule], user_input: str) -> tuple[bool, float, str | None, list[dict], list[dict]]:
     started = time.perf_counter()
+    clear_command_caches()
     state = RuleState(action=action, intermediate_steps=[], user_input=user_input)
     blocked = False
     blocked_rule_id: str | None = None
@@ -184,6 +194,7 @@ def run_model_in_loop(
                 "rule_id": item.rule_id,
                 "uca_id": item.uca_id,
                 "predicates": item.predicates,
+                "enforcement": item.enforcement,
                 "spec_path": str((spec_dir / f"{item.rule_id}.spec").as_posix()),
             }
             for item in artifacts
@@ -243,6 +254,8 @@ def run_model_in_loop(
 
 
 def main() -> int:
+    os.environ.setdefault("AGENTSPEC_NON_INTERACTIVE", "1")
+
     parser = argparse.ArgumentParser(description="Run strict spec-runtime shell experiment.")
     parser.add_argument(
         "--shell-kb",
